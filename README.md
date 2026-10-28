@@ -13,24 +13,34 @@ One asks which deploy target. Another asks again an hour later. A third applies 
 
 ---
 
-## The big picture
+## Your morning, before and after
+
+**Without Switchboard:**
 
 ```mermaid
 flowchart LR
-    A1[Agent A] --> S
-    A2[Agent B] --> S
-    A3[Agent C] --> S
-    S{Switchboard}
-    S -->|already answered, in scope| R[Receipt + answer<br/>you never see it]
-    S -->|genuinely new| H[You — once]
-    S -->|locked / unsafe| H
-    H -->|answer / correction| L[(Local ledger<br/>rules · evidence · receipts)]
-    L --> S
-    S -.->|correction lands| B[Blast radius<br/>find every affected decision]
-    B --> H
+    A[🤖 Agent 1] -->|Which hotel budget?| Y[😩 You]
+    B[🤖 Agent 2] -->|Hotel budget??| Y
+    C[🤖 Agent 3] -->|Budget for the hotel?| Y
+    Y -->|same answer, third time| A
+    Y -->|same answer, third time| B
+    Y -->|same answer, third time| C
 ```
 
-Three agents, one brain for preferences, one human interruption budget.
+**With Switchboard:**
+
+```mermaid
+flowchart LR
+    A[🤖 Agent 1] --> S
+    B[🤖 Agent 2] --> S
+    C[🤖 Agent 3] --> S
+    S[🎛️ Switchboard] -->|knows already — no bother| A
+    S -->|knows already — no bother| B
+    S -->|one real question| Y[🙂 You]
+    Y -->|answer once| S
+```
+
+You answer the question **once**. Every agent hears it. That's the whole idea.
 
 ## What it actually does
 
@@ -40,16 +50,18 @@ Agents ask Switchboard first. If you've already answered this, in this scope, wi
 **Corrections that understand blast radius.**
 Change your mind about a preference, and Switchboard doesn't just update a note. It finds *every previous decision that relied on the old rule*, flags the pending ones for revalidation, and shows you the list. No more stale assumptions quietly compounding downstream.
 
+Changed your mind? Here's who finds out:
+
 ```mermaid
 flowchart LR
-    OLD[Rule v1<br/>'use staging'] --> D1[Decision A]
-    OLD --> D2[Decision B]
-    OLD --> D3[Decision C]
-    FIX[You correct it] --> NEW[Rule v2<br/>'use canary']
-    NEW -.->|supersedes| OLD
-    D1 -.->|pending| RV[Revalidate]
-    D2 -.->|completed| REV[Flag for your review]
-    D3 -.->|no recorded link| UNK[Coverage: unknown<br/>shown, never hidden]
+    OLD[💬 Old preference<br/>'aisle seat, always'] --> T1[✈️ Flight booked]
+    OLD --> T2[🧳 Trip plan]
+    OLD --> T3[📧 Email draft]
+    YOU[✋ You: 'actually, window now'] --> NEW[💬 New preference]
+    NEW -.->|replaces| OLD
+    T1 -.->|not flown yet| FIX[🔄 Checked again]
+    T2 -.->|already done| LOOK[👀 Shown to you]
+    T3 -.->|not sure it was affected| Q[❓ Honestly flagged<br/>never hidden]
 ```
 
 **Preferences that know their boundaries.**
@@ -61,43 +73,33 @@ An agent claiming "it worked" is not the same as you confirming it, and Switchbo
 **Autonomy you can read.**
 Every category lives in one of three stages — `shadow` (watching), `suggest` (asking), `auto` (acting) — and its Autonomy Passport tells you exactly why, on what evidence, with what limits. When a correction lands, the flipped slice goes back on probation automatically. No silent promotions. No mystery confidence scores.
 
+Think of it like a new assistant earning trust:
+
 ```mermaid
-stateDiagram-v2
-    [*] --> shadow: new category
-    shadow --> suggest: enough confirmed evidence
-    suggest --> auto: evidence clears policy
-    auto --> shadow: correction / canary failure
-    suggest --> shadow: scope violation
-    auto --> Probation: preference corrected
-    Probation --> auto: fresh human confirmations
-    Probation --> shadow: new rule fails to generalise
+flowchart LR
+    A[👀 Watching<br/>learns silently] --> B[🙋 Asking<br/>'shall I?']
+    B --> C[✅ Trusted<br/>handles it alone]
+    C -->|you correct it| D[🧑‍🏫 Probation<br/>proves it again]
+    D -->|gets it right| C
+    D -->|gets it wrong| A
 ```
 
 ---
 
-## See it think
+## What happens when an agent asks
 
 ```mermaid
 flowchart TD
-    Q[Question arrives] --> AUTH[Authenticate agent<br/>validate schema]
-    AUTH --> LOCK{Locked class?<br/>money · deletion · irreversible}
-    LOCK -->|yes| DEFER[Defer to human<br/>no exceptions]
-    LOCK -->|no| SCOPE{Scope valid?<br/>checked BEFORE similarity}
-    SCOPE -->|fail / unknown| DEFER
-    SCOPE -->|pass| MATCH{Matching rule?<br/>T0 typed → T1 local → T3 model}
-    MATCH -->|none| DEFER
-    MATCH -->|found| STAGE{Category stage}
-    STAGE -->|shadow| LOG[Log prediction<br/>defer]
-    STAGE -->|suggest| DEFER
-    STAGE -->|auto + slice healthy| ANSWER[Answer + receipt]
-    STAGE -->|slice on probation| DEFER
-    ANSWER --> LEDGER[(Append-only ledger)]
-    DEFER --> QUEUE[Priority queue<br/>merge true duplicates]
-    QUEUE --> HUMAN[You answer once]
-    HUMAN --> LEDGER
+    Q[🤖 'Can I book the cheap flight?'] --> SAFE{Is it risky?<br/>money, deleting, sending}
+    SAFE -->|yes| YOU1[🙋 Asks you first<br/>always]
+    SAFE -->|no| KNOW{Have you answered<br/>this before?}
+    KNOW -->|not really| YOU2[🙋 Asks you<br/>nicely, once]
+    KNOW -->|yes| FIT{Does that answer<br/>still fit here?}
+    FIT -->|wrong place / changed| YOU2
+    FIT -->|fits perfectly| GO[✅ Done<br/>with a receipt you can check]
 ```
 
-A question arrives → Switchboard checks the locks → checks scope → checks memory → answers or defers → issues a receipt. The whole decision is auditable afterwards: which rule, which version, which evidence, which stage allowed it.
+Four questions, in order: *Is it risky? Have we covered this? Does the old answer still fit?* Only then does anything happen without you.
 
 And when it can't answer safely? **It defers. Every time.** Locked actions — money, deletions, messages to new recipients, anything irreversible — *always* come to you in v1. No exceptions, no learned overrides, no Away-mode bypass.
 
@@ -155,36 +157,36 @@ npm run build    # FastAPI serves the build at /
 
 Our replay harness runs identical synthetic preference-flip traces against four strategies. After a user changes a preference:
 
-| Strategy | Coverage | Wrong auto-answers | Stale answers after the flip |
+| Approach | Questions handled alone | Wrong answers | Still using your old preference |
 |---|---|---|---|
-| B0 · never adapt | 0.91 | 8 | 8 |
-| B1 · adapt instantly | 0.91 | 0 | 0 |
-| B2 · Switchboard | **0.73** | **0** | **0** |
-| B3 · B2 + evidence integrity | **0.73** | **0** | **0** |
+| Never learns (B0) | 91% | 8 | 8 |
+| Learns instantly, no probation (B1) | 91% | 0 | 0 |
+| **Switchboard (B2)** | **73%** | **0** | **0** |
+| Switchboard + trust checks (B3) | **73%** | **0** | **0** |
 
 B2 trades some coverage for safety: after a correction, the flipped slice serves a short probation — a handful of confirmations — while everything unrelated keeps flowing. Under a *noisy* first correction (the fix itself is wrong), that probation measurably wins: 2 wrong auto-answers vs B1's 3. Under a *misscoped* correction, both fail — a hold cannot fix a scope the system was never told, and we show that result instead of hiding it.
 
 Adversarial agents flooding fake "it worked" reports? Measured: a naive system that counts agent labels gets contaminated; Switchboard's count stays at zero.
 
-```mermaid
-xychart-beta
-    title "Wrong auto-answers after a preference flip (lower is better)"
-    x-axis [B0-never-adapt, B1-instant, B2-Switchboard, B3-+integrity]
-    y-axis "Wrong answers" 0 --> 9
-    bar [8, 0, 0, 0]
-```
+In plain terms — you change your mind, then we count how often each approach still gives the *old* answer:
 
 ```mermaid
-flowchart LR
-    subgraph Evidence in
-        HC[Human confirmed] --> GOLD[Can teach the system]
-        HX[Human corrected] --> GOLD
-        TV[Tool verified] --> EXEC[Execution labels only]
-        AA[Agent asserted] --> QUAR[Quarantined]
-        MI[Model inferred] --> QUAR
-        SY[Synthetic] --> EVAL[Evaluation only]
-    end
-    QUAR -.->|never silently| GOLD
+xychart-beta
+    title "Oops moments after you change your mind (fewer is better)"
+    x-axis [Never learns, Learns instantly, Switchboard]
+    y-axis "Wrong answers" 0 --> 9
+    bar [8, 0, 0]
+```
+
+And not everyone's word counts the same. Here's the trust ladder:
+
+```mermaid
+flowchart TD
+    A[🙋 You said it] -->|trusted| T[✅ Can teach Switchboard]
+    B[✋ You corrected it] -->|trusted| T
+    C[🔧 A tool proved it happened] -->|partly| P[📋 Proves actions, not wishes]
+    D[🤖 An agent said 'trust me'] -->|not enough| Q[🚧 Kept aside]
+    E[🎲 A model guessed it] -->|not enough| Q
 ```
 
 These are synthetic traces, labelled as such, with uncertainty intervals — not a population error guarantee. Anyone who promises you a proven 2% error rate from eleven questions is selling something. We'd rather show the trade-off.
