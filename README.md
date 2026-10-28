@@ -2,7 +2,7 @@
 
 Local-first personal autonomy layer for compatible AI agents. "Your agents learn when to ask."
 
-Implements Product Spec / HLD / LLD v0.2: MCP `ask` with versioned scoped rules, hard locks,
+MCP `ask` with versioned scoped rules, hard locks,
 Shadow/Suggest/Auto stages, receipts, preference supersession with blast radius, attention queue,
 evidence integrity, Autonomy Passport, sandbox action binding, replay evaluation, and two demo
 agents (Visual Scout, Trade-off Planner) with a four-edge directional UI.
