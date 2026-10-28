@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Switchboard — your agents learn when to ask</title>
+<style>
+:root{
+  --bg:#101214; --panel:#17191c; --panel2:#1e2126; --line:#2c3038;
+  --ink:#f2efe9; --dim:#a49e93; --faint:#6f6a61;
+  --amber:#e8a33d; --amber-dim:#7a5a24; --green:#7fc97f; --red:#e07a5f; --blue:#81b0d8;
+  --mono:"Cascadia Code",Consolas,"SF Mono",monospace;
+  --sans:"Segoe UI",Avenir,"Helvetica Neue",Arial,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.45}
+header{display:flex;align-items:center;gap:14px;padding:14px 22px;border-bottom:1px solid var(--line);background:var(--panel)}
+.logo{width:30px;height:30px;border:2px solid var(--amber);display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:4px;background:#0c0d0f}
+.logo i{background:var(--amber-dim);display:block}.logo i.on{background:var(--amber)}
+header h1{font-size:19px;margin:0;letter-spacing:-.02em;font-weight:700}
+header h1 em{font-style:normal;color:var(--amber)}
+.tag{color:var(--dim);font-size:13px}
+.status{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--dim);display:flex;gap:16px;align-items:center}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block;margin-right:6px}
+main{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(300px,1fr);gap:18px;padding:18px 22px;max-width:1440px;margin:0 auto}
+@media(max-width:900px){main{grid-template-columns:1fr}}
+h2{font-size:12px;text-transform:uppercase;letter-spacing:.14em;color:var(--faint);margin:0 0 10px;font-weight:600}
+.panel{background:var(--panel);border:1px solid var(--line);padding:16px;margin-bottom:18px}
+.panel-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px}
+.panel-head h2{margin:0}
+button{font-family:var(--sans);font-size:13px;background:var(--panel2);color:var(--ink);border:1px solid var(--line);padding:8px 13px;cursor:pointer;border-radius:3px}
+button:hover{border-color:var(--amber-dim);color:var(--amber)}
+button.primary{background:var(--amber);border-color:var(--amber);color:#171106;font-weight:600}
+button.primary:hover{background:#f2b354;color:#171106}
+button:disabled{opacity:.45;cursor:wait}
+.btnrow{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+
+/* --- decision stage --- */
+.stage{background:#0c0d0f;border:1px solid var(--line);position:relative;min-height:430px;display:flex;flex-direction:column}
+.stage-media{position:relative;flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;background:
+  radial-gradient(ellipse at 50% 38%, #1c1f24 0%, #0c0d0f 68%)}
+.stage-media img{max-width:100%;max-height:430px;display:block}
+.stage-empty{color:var(--faint);text-align:center;padding:60px 30px;max-width:420px}
+.stage-empty .big{font-size:22px;color:var(--dim);display:block;margin-bottom:8px;letter-spacing:-.01em}
+.bbox{position:absolute;border:2px solid var(--amber);pointer-events:none}
+.bbox span{position:absolute;top:-22px;left:-2px;background:var(--amber);color:#171106;font-family:var(--mono);
+  font-size:11px;padding:2px 6px;white-space:nowrap;font-weight:600}
+.edgebar{display:grid;grid-template-columns:1fr 1fr 1fr;grid-template-rows:auto auto auto;gap:0;border-top:1px solid var(--line)}
+.edge{font-size:14px;padding:14px 10px;background:var(--panel);border:0;border-right:1px solid var(--line);color:var(--ink);text-align:center}
+.edge small{display:block;font-family:var(--mono);font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.12em;margin-bottom:3px}
+.edge:hover{background:#22252c;color:var(--amber)}
+.edge:active{background:var(--amber);color:#171106}
+.edge:disabled{color:var(--faint)}
+.e-top{grid-column:2}.e-left{grid-column:1}.e-q{grid-column:2;display:flex;align-items:center;justify-content:center;
+  padding:10px 14px;font-size:16px;text-align:center;background:#0c0d0f;letter-spacing:-.01em}
+.e-right{grid-column:3}.e-bottom{grid-column:2}
+.e-left,.e-right{border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.question-meta{font-family:var(--mono);font-size:11px;color:var(--faint);padding:8px 12px;border-top:1px solid var(--line);display:flex;gap:18px;flex-wrap:wrap}
+.question-meta b{color:var(--dim);font-weight:400}
+
+/* --- output / lists --- */
+pre.out{font-family:var(--mono);font-size:12px;background:#0c0d0f;border:1px solid var(--line);padding:12px;
+  white-space:pre-wrap;word-break:break-word;max-height:340px;overflow:auto;margin:0}
+pre.out:empty{display:none}
+.obj{display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);align-items:baseline}
+.obj:last-child{border-bottom:0}
+.obj .swatch{width:10px;height:10px;background:var(--amber);flex:none;position:relative;top:1px}
+.obj .lbl{font-weight:600}
+.obj .bb{font-family:var(--mono);font-size:11px;color:var(--dim)}
+.rank{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line);font-size:14px}
+.rank:last-child{border:0}.rank .id{font-family:var(--mono);color:var(--amber)}
+.item{padding:9px 0;border-bottom:1px solid var(--line)}
+.item:last-child{border:0}
+.item .cat{font-family:var(--mono);font-size:11px;color:var(--amber);text-transform:uppercase;letter-spacing:.08em}
+.item .pri{float:right;font-family:var(--mono);font-size:11px;color:var(--faint)}
+.empty{color:var(--faint);font-size:13px;padding:6px 0}
+.pill{display:inline-block;font-family:var(--mono);font-size:11px;padding:2px 9px;border:1px solid var(--amber-dim);color:var(--amber);border-radius:20px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:5px 16px;font-size:13px}
+.kv dt{color:var(--faint);font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.08em;padding-top:2px}
+.kv dd{margin:0;font-family:var(--mono);font-size:12px}
+.note{font-size:12px;color:var(--dim);border-top:1px dashed var(--line);margin-top:12px;padding-top:10px}
+input{background:#0c0d0f;border:1px solid var(--line);color:var(--ink);padding:8px 10px;font-family:var(--mono);font-size:13px;border-radius:3px}
+footer{padding:14px 22px;color:var(--faint);font-size:12px;border-top:1px solid var(--line);font-family:var(--mono)}
+.spin{display:inline-block;width:12px;height:12px;border:2px solid var(--amber-dim);border-top-color:var(--amber);border-radius:50%;animation:sp 0.9s linear infinite;vertical-align:-2px;margin-right:8px}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.spin{animation:none}}
+</style></head><body>
+<header>
+  <div class="logo"><i class="on"></i><i></i><i></i><i class="on"></i></div>
+  <h1>Switch<em>board</em></h1>
+  <span class="tag">Your agents learn when to ask.</span>
+  <div class="status"><span><span class="dot"></span><span id="health">connecting</span></span>
+  <span id="providers">providers: —</span></div>
+</header>
+
+<main>
+  <!-- LEFT: decision stage -->
+  <section>
+    <div class="panel">
+      <div class="panel-head"><h2>Decision</h2><span class="pill" id="modePill">no question loaded</span></div>
+      <div class="stage">
+        <div class="stage-media" id="media">
+          <div class="stage-empty"><span class="big">Nothing waiting on you.</span>
+          Load a demo below, or connect an agent — when several agents ask the same thing, you answer it once, here.</div>
+        </div>
+        <div class="edgebar">
+          <button class="edge e-top" id="eTop" disabled><small>top</small><span>—</span></button>
+          <button class="edge e-left" id="eLeft" disabled><small>left</small><span>—</span></button>
+          <div class="e-q" id="question">No active question</div>
+          <button class="edge e-right" id="eRight" disabled><small>right</small><span>—</span></button>
+          <button class="edge e-bottom" id="eBottom" disabled><small>bottom</small><span>—</span></button>
+        </div>
+        <div class="question-meta" id="qmeta"><b>Gestures steer the recommendation. They never authorize a purchase, send, or deletion.</b></div>
+      </div>
+      <div class="btnrow">
+        <button onclick="loadTradeoff()">Trade-off demo</button>
+        <button onclick="loadVisual()">Visual demo</button>
+        <button class="primary" id="scoutBtn" onclick="loadScout()">Generate scene + segment with SAM 3.1</button>
+      </div>
+      <pre class="out" id="out"></pre>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>Grounded objects</h2><span style="font-family:var(--mono);font-size:11px;color:var(--faint)">SAM 3.1 evidence — not policy</span></div>
+      <div id="objects"><div class="empty">No segmentation yet. Run the SAM 3.1 demo and the objects it finds will appear here with their boxes.</div></div>
+    </div>
+  </section>
+
+  <!-- RIGHT: queue + passport -->
+  <aside>
+    <div class="panel">
+      <div class="panel-head"><h2>Waiting on you</h2><button onclick="loadInbox()">Refresh</button></div>
+      <div id="inbox"><div class="empty">Checking the queue…</div></div>
+      <div class="note">Questions are batched only when they are truly the same decision. Critical and locked questions are never delayed to fill a batch.</div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>Autonomy passport</h2></div>
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <input id="cat" value="purchase" style="flex:1"><button onclick="loadPassport()">Inspect</button>
+      </div>
+      <div id="passport"><div class="empty">Pick a category to see why it is allowed to act — or why it still has to ask.</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>How to read this</h2></div>
+      <div style="font-size:13px;color:var(--dim)">
+        <p style="margin:0 0 8px">Every card is one decision, with the evidence that produced it. Edge labels are written for <em>this</em> question — the directions are just where your hand already is.</p>
+        <p style="margin:0">A category moves shadow → suggest → auto only on confirmed evidence, and drops back the moment a correction or a failed canary says it should.</p>
+      </div>
+    </div>
+  </aside>
+</main>
+<footer>local-first · ledger on this machine · model calls are opt-in and fail closed · a risk target is a policy goal, not a guarantee</footer>
+
+<script>
+const $=id=>document.getElementById(id);
+let payload=null, lastObjects=[];
+const EDGE_BTN={top:'eTop',left:'eLeft',right:'eRight',bottom:'eBottom'};
+
+async function health(){try{const h=await (await fetch('/health')).json();
+  $('health').textContent='local server ok';
+  $('providers').textContent='reasoning tier: '+(h.t3_enabled?'live (modal → baseten → meta)':'off — questions will defer');
+ }catch(e){$('health').textContent='server unreachable';}}
+
+function setEdges(p){
+  document.querySelectorAll('.edge').forEach(b=>{b.disabled=true;b.querySelector('span').textContent='—';});
+  (p?p.actions:[]).forEach(a=>{const b=$(EDGE_BTN[a.edge]); if(!b) return;
+    b.disabled=false; b.querySelector('span').textContent=a.label;
+    b.onclick=()=>steer(a.action_id);});
+}
+function renderCard(p, meta){
+  payload=p; $('question').textContent=p.question; setEdges(p);
+  $('modePill').textContent=(p.agent_id||'question').replace('_',' ');
+  if(meta) $('qmeta').innerHTML=meta;
+}
+function resetMedia(html){$('media').innerHTML=html||'<div class="stage-empty"><span class="big">Nothing waiting on you.</span>Load a demo below.</div>';}
+
+async function post(path, body){const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});
+  if(!r.ok) throw new Error(path+' → '+r.status); return r.json();}
+
+async function loadTradeoff(){
+  resetMedia('<div class="stage-empty"><span class="big">Two laptops, one decision.</span>Steer by what you care about — the ranking below the card re-sorts live. Prices come from the caller dataset; nothing is invented.</div>');
+  const p=await post('/demo/tradeoff',{options:[
+    {id:'framework-13',price:1599,comfort:9,complexity:3,novelty:4},
+    {id:'eco-air-14',price:899,comfort:6,complexity:1,novelty:1},
+    {id:'titan-16',price:2499,comfort:8,complexity:5,novelty:7}]});
+  renderCard(p,'<b>source</b> caller dataset · <b>3 options</b> · steering re-ranks, it does not buy');
+  $('out').textContent='Options\n'+p._options.map(o=>`${o.id}  $${o.price}  comfort ${o.comfort}/10`).join('\n');
+  $('objects').innerHTML='<div class="empty">No image in this decision — nothing to segment.</div>';
+}
+async function loadVisual(){
+  resetMedia('<div class="stage-empty"><span class="big">A workspace photo would sit here.</span>Use the SAM 3.1 button to generate a real scene and segment the lamp, laptop and plant in it.</div>');
+  const p=await post('/demo/visual',{goal:'make this workspace calmer',objects:[{id:'o1',label:'desk lamp'}]});
+  renderCard(p,'<b>evidence</b> 1 named object · generated previews are concepts, never listing photos');
+}
+async function loadScout(){
+  const btn=$('scoutBtn'); btn.disabled=true;
+  $('out').innerHTML=''; $('out').textContent='';
+  resetMedia('<div class="stage-empty"><span class="spin"></span>Generating the scene with Muse Image…</div>');
+  try{
+    const g=await post('/demo/visual/generate',{prompt:'A tidy desk with a red table lamp on the left, a laptop in the center, and a potted plant on the right. Photorealistic, wide shot.'});
+    const img='data:image/webp;base64,'+g.b64_json;
+    $('media').innerHTML='<img id="scene" src="'+img+'" alt="Generated workspace scene">';
+    $('out').textContent='Segmenting “red table lamp”, “laptop”, “potted plant” with SAM 3.1…';
+    const s=await post('/demo/visual/scout',{goal:'make this workspace calmer',image_b64:g.b64_json,phrases:['red table lamp','laptop','potted plant']});
+    renderCard(s.payload,'<b>evidence</b> SAM 3.1 · <b>'+s.evidence.objects.length+' objects grounded</b> · image is a generated concept');
+    lastObjects=s.evidence.objects; drawBoxes(); renderObjects();
+    $('out').textContent='Done. The question above names only objects SAM actually found — pick an edge to steer.';
+  }catch(e){ $('out').textContent='Vision pipeline failed ('+e.message+'). The question was left unresolved — nothing was guessed.'; }
+  btn.disabled=false;
+}
+function drawBoxes(){
+  const m=$('media'), img=$('scene'); if(!img) return;
+  m.querySelectorAll('.bbox').forEach(e=>e.remove());
+  const W=img.clientWidth, H=img.clientHeight;
+  lastObjects.forEach(o=>{const b=o.bbox, d=document.createElement('div'); d.className='bbox';
+    d.style.left=(b.x1/b.w*W)+'px'; d.style.top=(b.y1/b.h*H)+'px';
+    d.style.width=((b.x2-b.x1)/b.w*W)+'px'; d.style.height=((b.y2-b.y1)/b.h*H)+'px';
+    d.innerHTML='<span>'+o.label+'</span>'; m.appendChild(d);});
+}
+function renderObjects(){
+  $('objects').innerHTML=lastObjects.length? lastObjects.map(o=>
+   `<div class="obj"><span class="swatch"></span><span class="lbl">${o.label}</span>
+    <span class="bb">box ${o.bbox.x1},${o.bbox.y1} → ${o.bbox.x2},${o.bbox.y2} · frame ${o.bbox.w}×${o.bbox.h} · mask ${o.mask_data_len} chars (${o.mask_encoding})</span></div>`).join('')
+   : '<div class="empty">SAM found no matching objects in this image.</div>';
+}
+async function steer(id){
+  if(!payload) return;
+  if(payload._options){ const s=await post('/demo/steer',{payload:payload,action_id:id});
+    $('out').textContent='Steered: '+s.action_id+' ('+s.edge+')\nWeights '+JSON.stringify(s.weights)+'\nNew ranking\n'+s.ranked_option_ids.map((r,i)=>(i+1)+'. '+r).join('\n');
+  } else { $('out').textContent='Steered: '+id+'\nThe agent would now revise its proposal in that direction. No purchase, send or deletion is authorized by this gesture.'; }
+}
+async function loadInbox(){
+  try{const items=await (await fetch('/inbox')).json();
+   $('inbox').innerHTML=items.length? items.map(i=>
+    `<div class="item"><span class="cat">${i.category}</span><span class="pri">priority ${Math.round(i.priority_score)}</span><br>${i.question_text}</div>`).join('')
+    : '<div class="empty">Queue is clear. Deferred questions from your agents will land here, batched only when they are the same decision.</div>';
+  }catch(e){$('inbox').innerHTML='<div class="empty">Queue unavailable.</div>';}
+}
+async function loadPassport(){
+  const c=$('cat').value.trim()||'purchase';
+  try{const p=await (await fetch('/passport/'+encodeURIComponent(c))).json();
+   $('passport').innerHTML=`<div style="margin-bottom:10px"><span class="pill">${p.category} · ${p.stage}${p.locked?' · locked':''}</span></div>
+   <dl class="kv">
+    <dt>Preference epoch</dt><dd>${p.preference_epoch}</dd>
+    <dt>Risk target</dt><dd>${p.risk_target} (policy goal, not a guarantee)</dd>
+    <dt>Evidence state</dt><dd>${p.evidence_state}</dd>
+    <dt>Gold samples</dt><dd>${p.gold_sample_count} human-confirmed</dd>
+    <dt>Policy version</dt><dd>${p.policy_version}</dd></dl>
+   <div class="note">${p.limitations.join('<br>')}</div>`;
+  }catch(e){$('passport').innerHTML='<div class="empty">Passport unavailable.</div>';}
+}
+window.addEventListener('resize',drawBoxes);
+health(); loadInbox();
+try{const es=new EventSource('/stream'); es.onmessage=()=>loadInbox();}catch(e){}
+</script></body></html>

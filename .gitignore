@@ -1,0 +1,12 @@
+.venv/
+.uv-cache/
+.uv-python/
+__pycache__/
+*.pyc
+.env
+*.db
+*.db-wal
+*.db-shm
+.pytest_cache/
+.tools/
+frontend/node_modules/
