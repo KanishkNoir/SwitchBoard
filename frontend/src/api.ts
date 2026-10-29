@@ -55,6 +55,8 @@ export const api = {
     ),
   attentionHealth: () => get<import("./types").AttentionHealth>("/human/attention-health"),
   drift: () => get<import("./types").DriftRow[]>("/drift"),
+  notices: () => get<import("./types").NoticeItem[]>("/notices"),
+  vetoNotice: (itemId: string) => post<{ vetoed: boolean }>(`/notices/${itemId}/veto`, {}),
   answerInbox: (itemId: string, body: unknown) =>
     post<{ decision_id: string; rule?: { action: string } | null }>(`/inbox/${itemId}/answer`, body),
   runEvaluation: () => post<import("./types").EvalReport>("/evaluation/replay", {}),

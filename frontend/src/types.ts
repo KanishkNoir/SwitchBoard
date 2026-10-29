@@ -60,6 +60,14 @@ export interface Passport {
   preference_epoch: string;
   evidence_state: string;
   gold_sample_count: number;
+  risk_gate?: {
+    gate_state: string;
+    would_block: boolean;
+    enforced: boolean;
+    wilson_upper: number | null;
+    labels_needed: number;
+    can_enforce: boolean;
+  };
   limitations: string[];
   policy_version: string;
 }
@@ -120,6 +128,17 @@ export interface EvalReport {
   >;
   is_synthetic: boolean;
   notes: string[];
+}
+
+export interface NoticeItem {
+  id: string;
+  question_id: string;
+  question_text: string;
+  category: string;
+  agent_id: string;
+  decision_id: string;
+  answer_json: string | null;
+  created_at: string;
 }
 
 export interface DriftRow {

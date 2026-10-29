@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
-import type { AttentionHealth, DriftRow, GroundedObject, InboxItem, Passport } from "../types";
+import type { AttentionHealth, DriftRow, GroundedObject, InboxItem, NoticeItem, Passport } from "../types";
 
 export function ObjectsPanel({
   objects,
@@ -61,6 +61,7 @@ export function InboxPanel({
   const [scopeVal, setScopeVal] = useState("");
   const [health, setHealth] = useState<AttentionHealth | null>(null);
   const [drift, setDrift] = useState<DriftRow[]>([]);
+  const [notices, setNotices] = useState<NoticeItem[]>([]);
   const seenAt = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
@@ -68,7 +69,14 @@ export function InboxPanel({
     for (const i of items) if (!seenAt.current.has(i.id)) seenAt.current.set(i.id, now);
     api.attentionHealth().then(setHealth).catch(() => setHealth(null));
     api.drift().then(setDrift).catch(() => setDrift([]));
+    api.notices().then(setNotices).catch(() => setNotices([]));
   }, [items]);
+
+  const veto = async (n: NoticeItem) => {
+    await api.vetoNotice(n.id);
+    onAnswered?.("Veto recorded — that answer now counts as a human-confirmed negative for its rule.");
+    onRefresh();
+  };
 
   const submit = async (item: InboxItem) => {
     if (!answer.trim()) return;
@@ -103,6 +111,18 @@ export function InboxPanel({
         <h2>Waiting on you</h2>
         <button onClick={onRefresh}>Refresh</button>
       </div>
+      {notices.map((n) => (
+        <div className="item" key={n.id}>
+          <span className="cat">{n.category}</span>
+          <span className="pri">warning stage · auto-answered</span>
+          <br />
+          {n.question_text}
+          <div className="bb">Switchboard answered this because the category is in the warning stage. Wrong call?</div>
+          <div style={{ marginTop: 8 }}>
+            <button onClick={() => veto(n)}>Veto this answer</button>
+          </div>
+        </div>
+      ))}
       {drift.some((d) => d.status === "drift_suspected") && (
         <div className="empty" style={{ borderColor: "var(--warn, #b45309)", textAlign: "left" }}>
           Silent drift suspected: a standing rule's recent outcomes turned negative, so
@@ -223,6 +243,19 @@ export function PassportPanel() {
             <dd>{passport.evidence_state}</dd>
             <dt>Gold samples</dt>
             <dd>{passport.gold_sample_count} human-confirmed</dd>
+            {passport.risk_gate && (
+              <>
+                <dt>Risk gate (shadow)</dt>
+                <dd>
+                  {passport.risk_gate.gate_state}
+                  {passport.risk_gate.wilson_upper !== null &&
+                    ` · upper bound ${(passport.risk_gate.wilson_upper * 100).toFixed(1)}%`}
+                  {passport.risk_gate.labels_needed > 0 &&
+                    ` · ${passport.risk_gate.labels_needed} more human labels before enforcement can be considered`}
+                  {" "}· measuring only, never blocks
+                </dd>
+              </>
+            )}
             <dt>Policy version</dt>
             <dd>{passport.policy_version}</dd>
           </dl>

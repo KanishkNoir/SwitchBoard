@@ -153,6 +153,26 @@ def attention_health():
     return svc.attention_health()
 
 
+@app.get("/risk/{category}")
+def risk(category: str):
+    return svc.gate_readiness(category)
+
+
+@app.get("/notices")
+def notices():
+    return svc.notices()
+
+
+@app.post("/notices/{item_id}/veto")
+def veto_notice(item_id: str):
+    try:
+        out = svc.veto_notice(item_id)
+        _notify("inbox")
+        return out
+    except SwitchboardError as e:
+        return err(e)
+
+
 @app.get("/drift")
 def drift_report():
     return svc.detect_drift()

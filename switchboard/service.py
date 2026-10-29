@@ -106,7 +106,7 @@ class SwitchboardService:
         return row
 
     def set_stage(self, category, stage, reason="manual"):
-        if stage not in ("shadow", "suggest", "auto"):
+        if stage not in ("shadow", "suggest", "warn", "auto"):
             raise SwitchboardError("INVALID_SCHEMA", "bad stage")
         self.category(category)
         self.store.execute("UPDATE category_settings SET stage=?,updated_at=? WHERE category=?",
@@ -305,6 +305,11 @@ class SwitchboardService:
         if stage == "suggest":
             return self._persist_decision(qid, req, cat, "suggested", "suggest",
                                           candidate["tier"] if candidate else "none", candidate, True, scope_result)
+        if stage == "warn" and candidate:
+            # V2 warning stage: answer is given, but flagged and the human is
+            # notified with a veto — graduation step between suggest and auto.
+            return self._persist_decision(qid, req, cat, "warn", "warn_stage",
+                                          candidate["tier"], candidate, False, scope_result)
         if stage == "auto" and candidate:
             return self._persist_decision(qid, req, cat, "auto", "matched_rule", candidate["tier"],
                                           candidate, False, scope_result)
@@ -319,7 +324,7 @@ class SwitchboardService:
             if not active or active["active_version_id"] != candidate["rule_version"]["id"]:
                 mode, reason, candidate = "deferred", "stale_rule_version", None
         did = new_id()
-        answer = candidate["rule_version"]["_answer"] if (candidate and mode == "auto") else None
+        answer = candidate["rule_version"]["_answer"] if (candidate and mode in ("auto", "warn")) else None
         self.store.execute(
             "INSERT INTO decisions(id,question_id,mode,answer_json,reason_code,matcher_tier,score,score_kind,"
             "category_stage,policy_version,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
@@ -331,14 +336,25 @@ class SwitchboardService:
                 "INSERT OR IGNORE INTO decision_rule_uses(decision_id,rule_version_id,match_type,scope_result_json)"
                 " VALUES(?,?,?,?)", (did, candidate["rule_version"]["id"], candidate["match_type"],
                                      json.dumps(scope_result or {"result": "pass"})))
+        if mode == "warn":
+            # The answer stands unless vetoed: surface it as a notice, not a question.
+            self.store.execute(
+                "UPDATE attention_items SET status='notified',updated_at=? WHERE question_id=? AND status='queued'",
+                (now_iso(), qid))
         rid = new_id()
-        receipt_type = "answer" if mode == "auto" else "defer"
+        receipt_type = "answer" if mode in ("auto", "warn") else "defer"
         self.store.execute(
             "INSERT INTO receipts(id,decision_id,receipt_type,why_text,evidence_ids_json,issued_at)"
             " VALUES(?,?,?,?,?,?)", (rid, did, receipt_type, reason, "[]", now_iso()))
         event = {"auto": "decision.auto_answered", "shadow": "decision.shadow_logged",
-                 "suggested": "decision.suggested"}.get(mode, "decision.deferred")
+                 "suggested": "decision.suggested", "warn": "decision.warn_answered"}.get(mode, "decision.deferred")
         self.store.emit("system", "switchboard", event, "decision", did, {"reason": reason, "tier": tier})
+        if mode == "auto":
+            gate = self.risk_estimate(cat["category"])
+            if gate["would_block"]:
+                # Shadow gate: flag loudly, block nothing (research verdict).
+                self.store.emit("system", "switchboard", "decision.risk_gate_shadow_block",
+                                "decision", did, gate)
         dec = self.store.query_one("SELECT * FROM decisions WHERE id=?", (did,))
         rec = self.store.query_one("SELECT * FROM receipts WHERE id=?", (rid,))
         q = self.store.query_one("SELECT * FROM questions WHERE id=?", (qid,))
@@ -346,7 +362,7 @@ class SwitchboardService:
 
     def _response(self, dec, rec, q):
         uses = self.store.query("SELECT rule_version_id FROM decision_rule_uses WHERE decision_id=?", (dec["id"],))
-        decision = {"auto": "answer"}.get(dec["mode"], "defer")
+        decision = {"auto": "answer", "warn": "answer"}.get(dec["mode"], "defer")
         resp = {
             "decision": decision,
             "answer": json.loads(dec["answer_json"]) if dec["answer_json"] else None,
@@ -359,10 +375,41 @@ class SwitchboardService:
             "score": dec["score"],
             "score_kind": dec["score_kind"],
             "stage": dec["category_stage"],
-            "requires_human": dec["mode"] != "auto",
+            "requires_human": dec["mode"] not in ("auto", "warn"),
+            "warning": ("warn_stage: answered under the warning stage; the human has been "
+                        "notified and can veto" if dec["mode"] == "warn" else None),
+            "risk_gate": (self.risk_estimate(q["category"])
+                          if dec["mode"] in ("auto", "warn") else None),
             "explanation": f"{dec['reason_code']} via {dec['matcher_tier']}",
         }
         return resp
+
+    # ---------- V2 warning-stage notices ----------
+    def notices(self):
+        return self.store.query(
+            "SELECT ai.*, q.question_text, q.category, q.agent_id,"
+            " (SELECT d.id FROM decisions d WHERE d.question_id=q.id ORDER BY d.created_at DESC LIMIT 1) AS decision_id,"
+            " (SELECT d.answer_json FROM decisions d WHERE d.question_id=q.id ORDER BY d.created_at DESC LIMIT 1) AS answer_json"
+            " FROM attention_items ai JOIN questions q ON q.id=ai.question_id"
+            " WHERE ai.status='notified' ORDER BY ai.created_at DESC")
+
+    def veto_notice(self, item_id, actor="local_user"):
+        """Veto a warn-stage answer: clear the notice and record a human negative."""
+        item = self.store.query_one("SELECT * FROM attention_items WHERE id=? AND status='notified'",
+                                    (item_id,))
+        if not item:
+            raise SwitchboardError("NOT_FOUND", "notice")
+        self.store.execute("UPDATE attention_items SET status='resolved',updated_at=? WHERE id=?",
+                           (now_iso(), item_id))
+        dec = self.store.query_one(
+            "SELECT id FROM decisions WHERE question_id=? ORDER BY created_at DESC LIMIT 1",
+            (item["question_id"],))
+        if dec:
+            self.confirm_feedback(dec["id"], "incorrect", actor=actor)
+        self.store.emit("human", actor, "attention.notice_vetoed", "question", item["question_id"],
+                        {"decision_id": dec["id"] if dec else None}, evidence_class="human_confirmed")
+        return {"item_id": item_id, "vetoed": True,
+                "decision_id": dec["id"] if dec else None}
 
     # ---------- attention ----------
     def _register_attention(self, qid, req, risk):
@@ -521,6 +568,55 @@ class SwitchboardService:
                                                source_type="explicit_edit", actor=actor)
                     result["rule"] = {**created, "action": "created"}
         return result
+
+    # ---------- V3/V4 risk gate (shadow mode) ----------
+    # Per the research verdict, tiny per-user label counts cannot certify an
+    # error-rate target, so the gate never blocks yet: it estimates the error
+    # rate from human-confirmed labels only, flags would-block answers, and
+    # reports how much evidence enforcement would still need.
+    RISK_MIN_GOLD = 30
+
+    def risk_estimate(self, category: str) -> dict:
+        import math
+        cat = self.category(category)
+        rows = self.store.query(
+            "SELECT fl.label_value FROM feedback_labels fl"
+            " JOIN decisions d ON d.id=fl.decision_id JOIN questions q ON q.id=d.question_id"
+            " WHERE q.category=? AND fl.eligible_for_calibration=1 AND d.mode IN ('auto','warn')"
+            " ORDER BY fl.created_at DESC LIMIT 200", (category,))
+        n = len(rows)
+        errors = sum(1 for r in rows
+                     if str(r["label_value"]).strip().lower() in self._NEGATIVE_OUTCOMES)
+        target = cat["risk_target"]
+        if n == 0:
+            return {"category": category, "gold_sample": 0, "errors": 0, "error_rate": None,
+                    "wilson_upper": None, "risk_target": target,
+                    "gate_state": "insufficient_evidence", "would_block": False, "enforced": False}
+        p = errors / n
+        z = 1.96
+        denom = 1 + z * z / n
+        centre = p + z * z / (2 * n)
+        margin = z * math.sqrt((p * (1 - p) + z * z / (4 * n)) / n)
+        upper = min(1.0, (centre + margin) / denom)
+        if n < self.RISK_MIN_GOLD:
+            state = "insufficient_evidence"
+        elif upper > target:
+            state = "would_block"
+        else:
+            state = "within_target"
+        return {"category": category, "gold_sample": n, "errors": errors,
+                "error_rate": round(p, 4), "wilson_upper": round(upper, 4),
+                "risk_target": target, "gate_state": state,
+                "would_block": state == "would_block", "enforced": False}
+
+    def gate_readiness(self, category: str) -> dict:
+        est = self.risk_estimate(category)
+        needed = max(0, self.RISK_MIN_GOLD - est["gold_sample"])
+        return {**est, "labels_needed": needed,
+                "can_enforce": needed == 0 and est["gate_state"] != "insufficient_evidence",
+                "note": ("Shadow mode: the gate measures and flags only. Enforcement is a "
+                         "separate human promotion decision once enough human-confirmed "
+                         "labels exist; agent labels never count.")}
 
     # ---------- V5 silent drift detection ----------
     # The world changed but the rule didn't: question text still matches, so
@@ -720,6 +816,7 @@ class SwitchboardService:
                            "fresh_count": h["fresh_count"], "status": h["status"]} for h in holds],
                 "hold_note": "Sliced smoke-test hold: catches gross non-generalisation; certifies no risk target.",
                 "gold_sample_count": sample,
+                "risk_gate": self.gate_readiness(category),
                 "limitations": ["Sample metrics are historical measurements, not guarantees about the next decision.",
                                 "Dependency coverage is bounded by agent-reported record_use edges."],
                 "policy_version": cat["policy_version"]}
