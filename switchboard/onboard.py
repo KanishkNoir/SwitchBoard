@@ -37,10 +37,22 @@ def _mcp_json(api_key, transport):
     return json.dumps({"mcpServers": {"switchboard": _entry(api_key, transport)}}, indent=2)
 
 
+def _muse_json(api_key, transport):
+    # Muse (verified on 1.4.14) reads MCP servers from the `mcpServers`
+    # block of ~/.config/muse/settings.json in the classic command/args/env
+    # shape; `muse mcp login` names the same key. Env values are interpolated
+    # from the parent environment, so keep them literal here.
+    if transport == "http":
+        server = {"url": _http()["url"]}
+    else:
+        server = _stdio(api_key)
+    return json.dumps({"schema_version": 1, "mcpServers": {"switchboard": server}}, indent=2)
+
+
 AGENTS = {
-    "muse": {"label": "Muse (Meta)", "filename": ".mcp.json", "tier": 1,
-             "target_hint": "workspace root (verify Muse MCP import in a fresh session)",
-             "render": _mcp_json},
+    "muse": {"label": "Muse (Meta)", "filename": "settings.json", "tier": 1,
+             "target_hint": "~/.config/muse/settings.json (merge the mcpServers block)",
+             "render": _muse_json},
     "claude-code": {"label": "Claude Code", "filename": ".mcp.json", "tier": 1,
                     "target_hint": "workspace root or ~/.claude.json",
                     "render": _mcp_json},
@@ -58,7 +70,9 @@ AGENTS = {
                       "mcp": {"switchboard": (
                           {"type": "remote", "url": _http()["url"]} if t == "http" else
                           {"type": "local", "command": ["uv", "run", "--project", _project(), "python", "-m", "switchboard.mcp_server"],
-                           "environment": {"SWITCHBOARD_AGENT_KEY": k}})}}, indent=2)},
+                           "environment": {"SWITCHBOARD_AGENT_KEY": k,
+                                           "SWITCHBOARD_DB": os.path.join(_project(), "switchboard.db"),
+                                           "UV_CACHE_DIR": os.path.join(_project(), ".uv-cache")}})}}, indent=2)},
     "cursor": {"label": "Cursor", "filename": "mcp.json", "tier": 2,
                "target_hint": ".cursor/mcp.json (project) or ~/.muse/mcp.json",
                "render": _mcp_json},

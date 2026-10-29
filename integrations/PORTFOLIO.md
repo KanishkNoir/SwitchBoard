@@ -17,10 +17,10 @@ Verification levels:
 
 | Agent | Type | Config we generate | Status |
 |---|---|---|---|
-| Muse Code | coding (Meta) | `.mcp.json` (workspace) | config-ready |
+| Muse Code | coding (Meta) | `mcpServers` block in `~/.config/muse/settings.json` | **verified live (1.4.14): headless run called `ask`, decision recorded in ledger; permanent install needs the one-time settings merge** |
 | Claude Code | coding | `.mcp.json` (workspace) | discovered in `claude mcp list`; pending user approval; print-mode blocked by org policy |
 | Codex CLI | coding | `~/.codex/config.toml` `[mcp_servers]` | registered + enabled in `codex mcp list`; needs `codex login` for live use |
-| OpenCode | coding (OSS) | `opencode.json` `mcp` | **verified: `opencode mcp list` shows switchboard connected** |
+| OpenCode | coding (OSS) | `opencode.json` `mcp` | **verified live: free model `opencode/big-pickle` called `ask`, decision recorded in ledger; `opencode mcp list` shows switchboard connected** |
 | Antigravity | coding/general | MCP config | candidate |
 
 ## Tier 2 — under an hour, config or bridge
