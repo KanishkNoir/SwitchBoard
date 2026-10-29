@@ -400,7 +400,77 @@ class SwitchboardService:
             " JOIN questions q ON q.id=ai.question_id WHERE ai.status='queued'"
             " ORDER BY ai.priority_score DESC, ai.created_at ASC")
 
-    def answer_inbox(self, item_id, answer, actor="local_user", save_rule=None):
+    # Rubber-stamp signals are advisory only: they never block an answer.
+    _APPROVAL_VALUES = {"allow", "yes", "approve", "approved", "true", "ok"}
+
+    def _is_approval(self, answer_obj) -> bool:
+        if isinstance(answer_obj, dict):
+            if answer_obj.get("allow") is True or answer_obj.get("approved") is True:
+                return True
+            val = answer_obj.get("value", answer_obj.get("decision", ""))
+        else:
+            val = answer_obj
+        return str(val).strip().lower() in self._APPROVAL_VALUES
+
+    def attention_health(self, window: int = 50) -> dict:
+        """Detect rubber-stamping: approving everything, in bursts, without reading.
+
+        Signals over the most recent human answers: approval share, longest
+        approval streak, fastest 10-minute burst, and median dwell time the
+        question was on screen (reported by the UI; None when unmeasured).
+        Advisory only — high risk suggests a nudge, never a block.
+        """
+        rows = self.store.query(
+            "SELECT d.answer_json, d.created_at FROM decisions d WHERE d.mode='human'"
+            " ORDER BY d.created_at DESC LIMIT ?", (window,))
+        total = len(rows)
+        if total == 0:
+            return {"total_answers": 0, "approval_share": None, "approval_streak": 0,
+                    "burst_per_10min": 0, "median_dwell_ms": None, "risk": "unknown",
+                    "signals": []}
+        approvals = [self._is_approval(json.loads(r["answer_json"] or "{}")) for r in rows]
+        streak = best = 0
+        for a in approvals:
+            streak = streak + 1 if a else 0
+            best = max(best, streak)
+        times = sorted(r["created_at"] for r in rows)
+        burst = 1
+        left = 0
+        from datetime import datetime, timedelta
+        parsed = [datetime.fromisoformat(t) for t in times]
+        for i, t in enumerate(parsed):
+            while t - parsed[left] > timedelta(minutes=10):
+                left += 1
+            burst = max(burst, i - left + 1)
+        dwell_rows = self.store.query(
+            "SELECT payload_json FROM events WHERE event_type='attention.item_resolved'"
+            " ORDER BY occurred_at DESC LIMIT ?", (window,))
+        dwells = []
+        for r in dwell_rows:
+            try:
+                d = json.loads(r["payload_json"] or "{}").get("dwell_ms")
+            except (ValueError, AttributeError):
+                d = None
+            if isinstance(d, (int, float)) and d >= 0:
+                dwells.append(d)
+        dwells.sort()
+        median_dwell = dwells[len(dwells) // 2] if dwells else None
+        share = sum(approvals) / total
+        signals = []
+        if total >= 10 and share >= 0.9:
+            signals.append(f"approval_share {share:.0%} over last {total} answers")
+        if best >= 8:
+            signals.append(f"{best} approvals in a row")
+        if burst >= 8:
+            signals.append(f"{burst} answers within 10 minutes")
+        if median_dwell is not None and median_dwell < 3000 and total >= 10:
+            signals.append(f"median on-screen time {int(median_dwell)}ms before answering")
+        risk = "elevated" if len(signals) >= 2 else ("watch" if signals else "ok")
+        return {"total_answers": total, "approval_share": round(share, 3),
+                "approval_streak": best, "burst_per_10min": burst,
+                "median_dwell_ms": median_dwell, "risk": risk, "signals": signals}
+
+    def answer_inbox(self, item_id, answer, actor="local_user", save_rule=None, dwell_ms=None):
         item = self.store.query_one("SELECT * FROM attention_items WHERE id=?", (item_id,))
         if not item:
             raise SwitchboardError("NOT_FOUND", "attention item")
@@ -425,7 +495,8 @@ class SwitchboardService:
             "INSERT INTO receipts(id,decision_id,receipt_type,why_text,evidence_ids_json,issued_at)"
             " VALUES(?,?,'answer','human_answered',?,?)", (rid, did, json.dumps([ev]), now_iso()))
         self.store.emit("human", actor, "attention.item_resolved", "question", item["question_id"],
-                        {"answer": answer_obj, "decision_id": did}, evidence_class="human_confirmed")
+                        {"answer": answer_obj, "decision_id": did, "dwell_ms": dwell_ms},
+                        evidence_class="human_confirmed")
         self._record_fresh_evidence(q["category"], json.loads(q["context_json"] or "{}"), "answer_inbox")
         result = {"item_id": item_id, "evidence_id": ev, "decision_id": did, "receipt_id": rid,
                   "batch_propagated": bool(item["batch_id"]), "rule": None}
@@ -451,6 +522,80 @@ class SwitchboardService:
                     result["rule"] = {**created, "action": "created"}
         return result
 
+    # ---------- V5 silent drift detection ----------
+    # The world changed but the rule didn't: question text still matches, so
+    # only outcome evidence can reveal it. Human-confirmed negatives are the
+    # strong signal; agent-asserted negatives alone need volume + no positives.
+    _NEGATIVE_OUTCOMES = {"failure", "failed", "error", "incorrect", "wrong", "bad", "regression"}
+    _POSITIVE_OUTCOMES = {"success", "ok", "correct", "worked", "good", "done"}
+
+    def _drift_for_rule(self, rule_id, version_id, scope_json, predicate_json, category):
+        rows = self.store.query(
+            "SELECT fl.label_value, fl.eligible_for_calibration FROM feedback_labels fl"
+            " JOIN decision_rule_uses dru ON dru.decision_id=fl.decision_id"
+            " WHERE dru.rule_version_id=? ORDER BY fl.created_at DESC LIMIT 20", (version_id,))
+        neg = pos = human_neg = 0
+        for r in rows:
+            v = str(r["label_value"]).strip().lower()
+            if v in self._NEGATIVE_OUTCOMES:
+                neg += 1
+                if r["eligible_for_calibration"]:
+                    human_neg += 1
+            elif v in self._POSITIVE_OUTCOMES:
+                pos += 1
+        status = "ok"
+        if human_neg >= 2 or (neg >= 3 and pos == 0):
+            status = "drift_suspected"
+        elif neg >= 1:
+            status = "watch"
+        hold_created = False
+        if status == "drift_suspected":
+            held = self.store.query_one(
+                "SELECT id FROM recalibration_holds WHERE rule_id=? AND status='held'", (rule_id,))
+            if not held:
+                scope = json.loads(scope_json or "{}")
+                pred = json.loads(predicate_json or "{}")
+                required_m = 1 if (pred.get("keywords") or pred.get("exact_question")) else 3
+                self.store.execute(
+                    "INSERT INTO recalibration_holds(id,category,rule_id,new_version_id,scope_fingerprint,"
+                    "preference_epoch,required_m,fresh_count,seen_contexts_json,status,created_at)"
+                    " VALUES(?,?,?,?,?,?,?,0,'[]','held',?)",
+                    (new_id(), category, rule_id, version_id,
+                     sha256_hex(canonical_json(scope.get("mandatory", {}))),
+                     self.category(category)["active_preference_epoch"], required_m, now_iso()))
+                self.store.emit("system", "switchboard", "drift.suspected", "rule", rule_id,
+                                {"version_id": version_id, "negatives": neg, "positives": pos,
+                                 "human_negatives": human_neg})
+                hold_created = True
+        return {"rule_id": rule_id, "category": category, "version_id": version_id,
+                "labelled": len(rows), "positives": pos, "negatives": neg,
+                "human_negatives": human_neg, "status": status, "hold_created": hold_created}
+
+    def detect_drift(self, rule_id: str | None = None) -> list:
+        """Scan active rule versions for silent drift; place a hold on suspects."""
+        q = ("SELECT r.id AS rule_id, r.category, rv.id AS version_id, rv.scope_json, rv.predicate_json"
+             " FROM rules r JOIN rule_versions rv ON rv.id=r.active_version_id"
+             " WHERE r.status='active'")
+        args = []
+        if rule_id:
+            q += " AND r.id=?"
+            args.append(rule_id)
+        return [self._drift_for_rule(r["rule_id"], r["version_id"], r["scope_json"],
+                                     r["predicate_json"], r["category"])
+                for r in self.store.query(q, args)]
+
+    def _drift_check_for_decision(self, decision_id):
+        rows = self.store.query(
+            "SELECT DISTINCT dru.rule_version_id FROM decision_rule_uses dru WHERE dru.decision_id=?",
+            (decision_id,))
+        for r in rows:
+            ver = self.store.query_one(
+                "SELECT rv.*, ru.category, ru.id AS rule_id FROM rule_versions rv"
+                " JOIN rules ru ON ru.id=rv.rule_id WHERE rv.id=?", (r["rule_version_id"],))
+            if ver:
+                self._drift_for_rule(ver["rule_id"], ver["id"], ver["scope_json"],
+                                     ver["predicate_json"], ver["category"])
+
     # ---------- evidence / outcomes ----------
     def add_evidence(self, evidence_class, actor_type, actor_id, source_ref=None, payload_excerpt=None):
         eid = new_id()
@@ -473,6 +618,7 @@ class SwitchboardService:
             (lid, decision_id, "outcome", outcome, eid, "agent_asserted_not_gold", now_iso()))
         self.store.emit("agent", agent["id"], "feedback.received", "decision", decision_id,
                         {"outcome": outcome}, evidence_class="agent_asserted")
+        self._drift_check_for_decision(decision_id)
         return {"evidence_id": eid, "label_id": lid, "eligible_for_calibration": False}
 
     def confirm_feedback(self, decision_id, label_value, actor="local_user"):
@@ -490,6 +636,7 @@ class SwitchboardService:
         if dec_q:
             self._record_fresh_evidence(dec_q["category"], json.loads(dec_q["context_json"] or "{}"),
                                         "confirm_feedback")
+        self._drift_check_for_decision(decision_id)
         return {"evidence_id": eid, "label_id": lid, "eligible_for_calibration": True}
 
     # ---------- dependencies / blast radius ----------

@@ -140,11 +140,27 @@ def inbox():
 @app.post("/inbox/{item_id}/answer")
 def inbox_answer(item_id: str, body: dict):
     try:
-        out = svc.answer_inbox(item_id, body.get("answer"), save_rule=body.get("save_rule"))
+        out = svc.answer_inbox(item_id, body.get("answer"), save_rule=body.get("save_rule"),
+                               dwell_ms=body.get("dwell_ms"))
         _notify("inbox")
         return out
     except SwitchboardError as e:
         return err(e)
+
+
+@app.get("/human/attention-health")
+def attention_health():
+    return svc.attention_health()
+
+
+@app.get("/drift")
+def drift_report():
+    return svc.detect_drift()
+
+
+@app.post("/drift/scan")
+def drift_scan():
+    return svc.detect_drift()
 
 
 @app.get("/human/agents")

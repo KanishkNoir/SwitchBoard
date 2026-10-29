@@ -53,6 +53,8 @@ export const api = {
     get<{ affected: import("./types").BlastItem[]; coverage_caveat: string }>(
       `/rules/${ruleId}/blast-radius`
     ),
+  attentionHealth: () => get<import("./types").AttentionHealth>("/human/attention-health"),
+  drift: () => get<import("./types").DriftRow[]>("/drift"),
   answerInbox: (itemId: string, body: unknown) =>
     post<{ decision_id: string; rule?: { action: string } | null }>(`/inbox/${itemId}/answer`, body),
   runEvaluation: () => post<import("./types").EvalReport>("/evaluation/replay", {}),

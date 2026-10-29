@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
-import type { GroundedObject, InboxItem, Passport } from "../types";
+import type { AttentionHealth, DriftRow, GroundedObject, InboxItem, Passport } from "../types";
 
 export function ObjectsPanel({
   objects,
@@ -59,6 +59,16 @@ export function InboxPanel({
   const [keywords, setKeywords] = useState("");
   const [scopeKey, setScopeKey] = useState("");
   const [scopeVal, setScopeVal] = useState("");
+  const [health, setHealth] = useState<AttentionHealth | null>(null);
+  const [drift, setDrift] = useState<DriftRow[]>([]);
+  const seenAt = useRef<Map<string, number>>(new Map());
+
+  useEffect(() => {
+    const now = Date.now();
+    for (const i of items) if (!seenAt.current.has(i.id)) seenAt.current.set(i.id, now);
+    api.attentionHealth().then(setHealth).catch(() => setHealth(null));
+    api.drift().then(setDrift).catch(() => setDrift([]));
+  }, [items]);
 
   const submit = async (item: InboxItem) => {
     if (!answer.trim()) return;
@@ -74,6 +84,7 @@ export function InboxPanel({
     const out = await api.answerInbox(item.id, {
       answer: { value: answer.trim() },
       save_rule,
+      dwell_ms: seenAt.current.has(item.id) ? Date.now() - seenAt.current.get(item.id)! : null,
     });
     onAnswered?.(
       out.rule
@@ -92,6 +103,21 @@ export function InboxPanel({
         <h2>Waiting on you</h2>
         <button onClick={onRefresh}>Refresh</button>
       </div>
+      {drift.some((d) => d.status === "drift_suspected") && (
+        <div className="empty" style={{ borderColor: "var(--warn, #b45309)", textAlign: "left" }}>
+          Silent drift suspected: a standing rule's recent outcomes turned negative, so
+          Switchboard paused it (recalibration hold) instead of letting it keep answering
+          from a world that may have changed. Review it under Rules, then answer a few
+          fresh questions to release the hold.
+        </div>
+      )}
+      {health && health.risk !== "ok" && health.risk !== "unknown" && (
+        <div className="empty" style={{ borderColor: "var(--warn, #b45309)", textAlign: "left" }}>
+          {health.risk === "elevated" ? "Rubber-stamp risk: " : "Worth a look: "}
+          you may be approving without reading ({health.signals.join("; ")}). Slow down on
+          costly or irreversible questions — Switchboard never blocks you, it just flags the pattern.
+        </div>
+      )}
       {items.length === 0 ? (
         <div className="empty">
           Queue is clear. Deferred questions from your agents will land here, batched only

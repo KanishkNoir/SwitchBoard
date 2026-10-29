@@ -122,6 +122,28 @@ export interface EvalReport {
   notes: string[];
 }
 
+export interface DriftRow {
+  rule_id: string;
+  category: string;
+  version_id: string;
+  labelled: number;
+  positives: number;
+  negatives: number;
+  human_negatives: number;
+  status: "ok" | "watch" | "drift_suspected";
+  hold_created: boolean;
+}
+
+export interface AttentionHealth {
+  total_answers: number;
+  approval_share: number | null;
+  approval_streak: number;
+  burst_per_10min: number;
+  median_dwell_ms: number | null;
+  risk: "ok" | "watch" | "elevated" | "unknown";
+  signals: string[];
+}
+
 export interface SteerResult {
   status: string;
   action_id?: string;
