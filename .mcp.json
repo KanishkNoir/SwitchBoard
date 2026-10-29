@@ -4,7 +4,7 @@
       "command": "uv",
       "args": ["run", "python", "-m", "switchboard.mcp_server"],
       "env": {
-        "SWITCHBOARD_AGENT_KEY": "sb_REPLACE_WITH_REGISTERED_AGENT_KEY",
+        "SWITCHBOARD_AGENT_KEY": "${SWITCHBOARD_AGENT_KEY}",
         "SWITCHBOARD_DB": "switchboard.db"
       }
     }

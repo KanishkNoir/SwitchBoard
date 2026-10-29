@@ -11,3 +11,5 @@ __pycache__/
 .tools/
 frontend/node_modules/
 docs/
+integrations/generated/
+integrations/cursor-demo/

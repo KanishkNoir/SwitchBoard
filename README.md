@@ -128,6 +128,19 @@ Open **http://127.0.0.1:8765** in your browser.
 
 Local-first, always: the ledger lives on your machine, model calls are opt-in, and every provider failure results in a deferral — never a guessed answer.
 
+### On your phone (no app needed)
+
+Switchboard's interface is a mobile-friendly web app. To reach it from your phone,
+run the tunnel script and open the one-time login link it prints:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/start-tunnel.ps1
+```
+
+That link signs your phone in (30-day cookie). Treat it like a password — anyone
+with it can act as you. The UI refuses all access without that login whenever a
+`SWITCHBOARD_UI_TOKEN` is set, which the script always does.
+
 ## Connect your agents (MCP)
 
 Register an agent in the UI (**Agents & rules** tab), put its key in the agent's environment, and point it at Switchboard:

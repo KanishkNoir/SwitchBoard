@@ -18,6 +18,29 @@ svc = SwitchboardService(store)
 app = FastAPI(title="Switchboard", version="0.2.0")
 _subscribers: list[asyncio.Queue] = []
 
+UI_TOKEN = settings.ui_token
+_EXEMPT_PREFIXES = ("/api/", "/health")  # agent API uses its own key auth
+
+
+@app.middleware("http")
+async def ui_auth(request: Request, call_next):
+    """Human web UI gate. Open locally when no token configured; required for tunnel use."""
+    if not UI_TOKEN or request.url.path.startswith(_EXEMPT_PREFIXES):
+        return await call_next(request)
+    if request.url.path == "/login":
+        if request.query_params.get("token") == UI_TOKEN:
+            from fastapi.responses import RedirectResponse
+            resp = RedirectResponse(url="/", status_code=302)
+            resp.set_cookie("sb_token", UI_TOKEN, httponly=True, samesite="lax", max_age=60 * 60 * 24 * 30)
+            return resp
+        return JSONResponse(status_code=401, content={"error": "UNAUTHORIZED"})
+    token = request.cookies.get("sb_token") or request.headers.get("x-ui-token")
+    if token != UI_TOKEN:
+        return JSONResponse(status_code=401,
+                            content={"error": "UNAUTHORIZED",
+                                     "detail": "Open the login link from your Switchboard operator."})
+    return await call_next(request)
+
 
 def _notify(event: str):
     for q in list(_subscribers):
