@@ -1,7 +1,10 @@
 from fastapi.testclient import TestClient
 
+import switchboard.app as app_module
 from switchboard.app import app
 
+# The operator's .env may set a UI token; these API tests run tokenless.
+app_module.UI_TOKEN = ""
 client = TestClient(app)
 
 

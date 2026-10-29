@@ -78,8 +78,13 @@ def health():
 
 
 @app.post("/api/agents/register")
-def register_agent(body: dict):
-    # Local-only bootstrap: registration is a human local action.
+def register_agent(body: dict, request: Request):
+    # Bootstrap is a human action: on a token-protected deployment (the hub)
+    # registration requires the UI token, so strangers cannot mint agents.
+    if UI_TOKEN:
+        token = request.cookies.get("sb_token") or request.headers.get("x-ui-token")
+        if token != UI_TOKEN:
+            return JSONResponse(status_code=401, content={"error": "UNAUTHORIZED"})
     return svc.register_agent(body.get("name", "agent"), body.get("kind", "cli"), body.get("scopes"))
 
 

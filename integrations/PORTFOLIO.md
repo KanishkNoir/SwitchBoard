@@ -28,7 +28,8 @@ Verification levels:
 | Agent | Type | Config we generate | Status |
 |---|---|---|---|
 | Cursor | IDE coding | `.cursor/mcp.json` | config generated + placed in demo project; app not installed here |
-| Claude Desktop | desktop assistant | `claude_desktop_config.json` | config placed at %APPDATA%\Claude; app not installed here |
+| Claude Desktop | desktop assistant | `claude_desktop_config.json` | **protocol-verified with the installed config at %APPDATA%\Claude (dedicated `claude-desktop` agent, pinned ledger paths); restart the app to pick it up** |
+| ChatGPT desktop/web | desktop assistant | remote MCP app (Developer Mode) | **endpoint live-verified: `https://kanishksingh-1106--switchboard-mcp-api.us-east.modal.run/mcp` (tools/list + ask recorded on the Modal ledger as the `chatgpt` agent); user adds it in ChatGPT Settings → Apps → Developer Mode; paid plan required, write tools may be plan-gated** |
 | Hermes Agent | personal assistant | `~/.hermes/config.yaml` `mcp_servers:` | installed; config listed as enabled; live test blocked by sandbox temp/ACL on spawned processes |
 | OpenClaw | personal assistant | `~/.openclaw/openclaw.json` `mcp.servers` | installed; `openclaw mcp list/show` verifies config; live run needs model setup |
 | Cline / Roo Code | VS Code coding | VS Code MCP settings JSON | candidate |
@@ -59,5 +60,16 @@ uv run python -m switchboard.onboard --list
 Every generated config uses the registered agent key (identity from credentials,
 never payload JSON) and points at the local Switchboard MCP server (stdio by
 default, or `--transport http` for `http://127.0.0.1:8766/mcp` where supported).
+
+## Device-agnostic hub mode
+
+With `--remote https://kanishksingh-1106--switchboard-web.us-east.modal.run`,
+the generated stdio config also sets `SWITCHBOARD_REMOTE_URL`: the MCP server
+then proxies every call to the Modal hub, so agents on any machine share one
+ledger and the owner answers once from any device (phone web UI included).
+The hub is the single source of truth in this mode. Hub agent registration is
+gated by the UI token (`POST /api/agents/register` returns 401 without it);
+an unreachable hub fails closed to `defer`. OpenCode in this repo already runs
+in hub mode (verified: question recorded on Modal, absent locally).
 
 

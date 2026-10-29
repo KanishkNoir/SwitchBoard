@@ -13,6 +13,7 @@ from .service import SwitchboardService
 
 mcp = FastMCP("switchboard")
 _svc = None
+_hub = None
 
 
 def svc() -> SwitchboardService:
@@ -20,6 +21,15 @@ def svc() -> SwitchboardService:
     if _svc is None:
         _svc = SwitchboardService(Store(settings.db_path))
     return _svc
+
+
+def hub():
+    """Device-agnostic mode: proxy to the hub API when SWITCHBOARD_REMOTE_URL is set."""
+    global _hub
+    if _hub is None and settings.remote_url:
+        from .remote import HubClient
+        _hub = HubClient(settings.remote_url, os.environ.get("SWITCHBOARD_AGENT_KEY", ""))
+    return _hub
 
 
 def _agent():
@@ -30,20 +40,27 @@ def _agent():
 def ask(request_id: str, question: str, category: str, intent_type: str = "unknown",
         reversibility: str = "unknown", context: dict | None = None, options: list | None = None) -> dict:
     """Ask Switchboard whether a question is already answered by a valid user rule."""
-    return svc().ask(_agent(), QuestionRequest(
+    req = QuestionRequest(
         request_id=request_id, question=question, category=category, intent_type=intent_type,
-        reversibility=reversibility, context=context or {}, options=options or []))
+        reversibility=reversibility, context=context or {}, options=options or [])
+    if hub() is not None:
+        return hub().ask(req)
+    return svc().ask(_agent(), req)
 
 
 @mcp.tool()
 def get_rules(category: str | None = None) -> list:
     """List active user rules this agent may read (read-only)."""
+    if hub() is not None:
+        return hub().get_rules(category)
     return svc().get_rules(_agent(), category)
 
 
 @mcp.tool()
 def report_outcome(decision_id: str, outcome: str, detail: str = "") -> dict:
     """Report an outcome; stored as agent_asserted evidence, never a gold label."""
+    if hub() is not None:
+        return hub().report_outcome(decision_id, outcome, detail)
     return svc().report_outcome(_agent(), decision_id, outcome, detail)
 
 
@@ -51,6 +68,8 @@ def report_outcome(decision_id: str, outcome: str, detail: str = "") -> dict:
 def record_use(receipt_id: str, dependent_type: str, dependent_id: str,
                relationship: str = "used_answer", status: str = "pending") -> dict:
     """Record that a prior receipt influenced downstream work (best-effort dependency edge)."""
+    if hub() is not None:
+        return hub().record_use(receipt_id, dependent_type, dependent_id, relationship, status)
     return svc().record_use(_agent(), receipt_id, dependent_type, dependent_id, relationship, status)
 
 

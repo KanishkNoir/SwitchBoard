@@ -17,7 +17,7 @@ app = modal.App("switchboard")
 image = (
     modal.Image.debian_slim(python_version="3.12")
     .pip_install("fastapi>=0.115", "uvicorn>=0.30", "httpx>=0.27",
-                 "pydantic>=2.7", "meta-sam-parser>=0.0.4")
+                 "pydantic>=2.7", "meta-sam-parser>=0.0.4", "mcp>=1.9")
     .add_local_dir("switchboard", remote_path="/app/switchboard")
     .add_local_dir("frontend/dist", remote_path="/app/frontend/dist")
     .add_local_file("pyproject.toml", remote_path="/app/pyproject.toml")
@@ -40,3 +40,31 @@ def web():
     # our SQLite WAL lives on the volume at /data.
     from switchboard.app import app as fastapi_app
     return fastapi_app
+
+
+# Remote MCP endpoint for clients that cannot spawn a local stdio server
+# (ChatGPT desktop/web Developer Mode accepts remote HTTPS MCP only, with
+# OAuth or no auth — it cannot present a per-agent key). Identity therefore
+# comes from a dedicated registered agent key in the `switchboard-mcp`
+# Modal secret (SWITCHBOARD_AGENT_KEY), never from the request.
+mcp_secrets = secrets + [modal.Secret.from_name("switchboard-mcp")]
+
+
+@app.function(image=image, volumes={"/data": volume}, secrets=mcp_secrets,
+              cpu=1.0, memory=1024, scaledown_window=300)
+@modal.asgi_app()
+def mcp_api():
+    import sys
+    if "/app" not in sys.path:
+        sys.path.insert(0, "/app")
+    os.chdir("/app")
+    os.environ.setdefault("SWITCHBOARD_DB", "/data/switchboard.db")
+    from mcp.server.transport_security import TransportSecuritySettings
+
+    from switchboard.mcp_server import mcp
+    # Behind Modal's proxy the Host is the public *.modal.run name, so the
+    # localhost DNS-rebinding guard must be off (endpoint identity is the
+    # server-side secret above, never request data).
+    return mcp.streamable_http_app(
+        stateless_http=True, json_response=True, host="0.0.0.0",
+        transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False))

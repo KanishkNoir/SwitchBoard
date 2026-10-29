@@ -26,6 +26,9 @@ def _bool(name: str, default: bool = False) -> bool:
 class Settings:
     db_path: str = field(default_factory=lambda: os.environ.get("SWITCHBOARD_DB", "switchboard.db"))
     ui_token: str = field(default_factory=lambda: os.environ.get("SWITCHBOARD_UI_TOKEN", ""))
+    # Device-agnostic hub mode: when set, the MCP server proxies agent calls to
+    # this Switchboard web API (agent key auth) instead of a local ledger.
+    remote_url: str = field(default_factory=lambda: os.environ.get("SWITCHBOARD_REMOTE_URL", ""))
     baseten_api_key: str = field(default_factory=lambda: os.environ.get("BASETEN_API_KEY", ""))
     baseten_base_url: str = field(default_factory=lambda: os.environ.get("BASETEN_BASE_URL", "https://inference.baseten.co/v1"))
     baseten_model_id: str = field(default_factory=lambda: os.environ.get("BASETEN_MODEL_ID", "meta-models/muse-spark-open-1026"))
