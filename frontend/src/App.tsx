@@ -3,7 +3,7 @@ import { api } from "./api";
 import DecisionStage from "./components/DecisionStage";
 import EvaluationPanel from "./components/Evaluation";
 import { AgentsPanel, RulesPanel } from "./components/Manage";
-import { InboxPanel, ObjectsPanel, PassportPanel } from "./components/Panels";
+import { DebriefPanel, InboxPanel, ObjectsPanel, PassportPanel } from "./components/Panels";
 import type { DecisionPayload, GroundedObject, InboxItem, TradeOption } from "./types";
 
 const LAPTOPS: TradeOption[] = [
@@ -21,7 +21,7 @@ export default function App() {
   const [inbox, setInbox] = useState<InboxItem[]>([]);
   const [out, setOut] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
-  const [view, setView] = useState<"decision" | "manage" | "evaluation">("decision");
+  const [view, setView] = useState<"decision" | "manage" | "evaluation" | "debrief">("decision");
   const segRef = useRef<HTMLDivElement>(null);
   const [segInk, setSegInk] = useState({ x: 2, w: 0 });
 
@@ -194,6 +194,9 @@ export default function App() {
           <button className={view === "decision" ? "tab active" : "tab"} onClick={() => setView("decision")}>
             Decide
           </button>
+          <button className={view === "debrief" ? "tab active" : "tab"} onClick={() => setView("debrief")}>
+            Debrief
+          </button>
           <button className={view === "manage" ? "tab active" : "tab"} onClick={() => setView("manage")}>
             Agents &amp; rules
           </button>
@@ -207,7 +210,11 @@ export default function App() {
         {notice && <span className="notice">{notice}</span>}
       </nav>
 
-      {view === "evaluation" ? (
+      {view === "debrief" ? (
+        <main className="view-morph" style={{ gridTemplateColumns: "1fr" }}>
+          <DebriefPanel />
+        </main>
+      ) : view === "evaluation" ? (
         <main className="view-morph" style={{ gridTemplateColumns: "1fr" }}>
           <section>
             <EvaluationPanel />

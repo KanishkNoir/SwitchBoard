@@ -59,6 +59,7 @@ export const api = {
   vetoNotice: (itemId: string) => post<{ vetoed: boolean }>(`/notices/${itemId}/veto`, {}),
   dismissNotice: (itemId: string) => post<{ dismissed: boolean }>(`/notices/${itemId}/dismiss`, {}),
   inboxDetail: (itemId: string) => get<Record<string, unknown>>(`/inbox/${itemId}/detail`),
+  debrief: () => get<import("./types").DebriefRow[]>("/debrief"),
   answerInbox: (itemId: string, body: unknown) =>
     post<{ decision_id: string; rule?: { action: string } | null }>(`/inbox/${itemId}/answer`, body),
   runEvaluation: () => post<import("./types").EvalReport>("/evaluation/replay", {}),

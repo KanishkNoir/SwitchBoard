@@ -158,6 +158,11 @@ def risk(category: str):
     return svc.gate_readiness(category)
 
 
+@app.get("/debrief")
+def debrief(limit: int = 30):
+    return svc.debrief(limit)
+
+
 @app.get("/inbox/{item_id}/detail")
 def inbox_detail(item_id: str):
     try:

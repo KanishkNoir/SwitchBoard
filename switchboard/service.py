@@ -406,6 +406,59 @@ class SwitchboardService:
                 "eligibility": self.swipe_eligibility(q, item),
                 "decisions": decisions, "receipts": receipts, "events": events}
 
+    _DEBRIEF_REASONS = {
+        "locked": "Locked class — only you can answer this.",
+        "quarantine": "A rule tried to answer outside its scope, so it was paused and the question came to you.",
+        "recalibration_pending": "This category is recalibrating after a correction, so the rule is paused.",
+        "shadow": "Shadow stage: the rule would have answered, but this category only watches for now.",
+        "suggest": "Suggest stage: Switchboard proposed an answer and waited for your tap.",
+        "warn_stage": "Warning stage: Switchboard answered and left you a veto.",
+        "rule_match": "A standing rule inside its scope answered this.",
+        "governor_budget": "The attention budget for this batch was reached, so this waited.",
+        "semantic_ambiguous": "The matching rule's evidence was ambiguous, so it asked instead of guessing.",
+        "no_match": "No standing rule covered this, so it asked you.",
+    }
+
+    def debrief(self, limit: int = 30) -> list:
+        """Recent decisions in priority order, each with its reason in plain words."""
+        rows = self.store.query(
+            "SELECT d.*, q.question_text, q.category, q.agent_id,"
+            " (SELECT r.id FROM receipts r WHERE r.decision_id=d.id ORDER BY r.issued_at DESC LIMIT 1) AS receipt_id,"
+            " (SELECT e.payload_json FROM events e WHERE e.object_type='question' AND e.object_id=d.question_id"
+            "  AND e.event_type='attention.item_resolved' ORDER BY e.occurred_at DESC LIMIT 1) AS resolved_json"
+            " FROM decisions d JOIN questions q ON q.id=d.question_id"
+            " ORDER BY d.created_at DESC LIMIT ?", (limit,))
+        out = []
+        for d in rows:
+            answer = json.loads(d["answer_json"] or "null")
+            origin = None
+            dwell = None
+            if d["resolved_json"]:
+                try:
+                    payload = json.loads(d["resolved_json"])
+                    origin, dwell = payload.get("origin"), payload.get("dwell_ms")
+                except ValueError:
+                    pass
+            value = answer.get("value") if isinstance(answer, dict) else answer
+            if d["mode"] == "human":
+                bucket = "denied_by_you" if str(value).lower() in ("deny", "denied", "no") else "answered_by_you"
+            elif d["mode"] in ("auto", "warn"):
+                bucket = "auto_answered"
+            elif d["mode"] == "suggested":
+                bucket = "answered_by_you"
+            else:
+                bucket = "still_waiting"
+            out.append({
+                "decision_id": d["id"], "question_text": d["question_text"],
+                "category": d["category"], "mode": d["mode"], "bucket": bucket,
+                "answer": answer, "reason_code": d["reason_code"],
+                "reason_plain": self._DEBRIEF_REASONS.get(
+                    d["reason_code"], f"Decided by {d['reason_code']} (see ledger event)."),
+                "receipt_id": d["receipt_id"], "origin": origin, "dwell_ms": dwell,
+                "stage": d["category_stage"], "created_at": d["created_at"],
+            })
+        return out
+
     # ---------- V2 warning-stage notices ----------
     def notices(self):
         return self.store.query(

@@ -83,6 +83,17 @@ export function RulesPanel() {
   // supersede form (per selected rule)
   const [sel, setSel] = useState<string | null>(null);
   const [newAnswer, setNewAnswer] = useState("");
+  const [preview, setPreview] = useState<{ ruleId: string; affected: number } | null>(null);
+
+  const previewCorrection = async (r: RuleRow) => {
+    if (!newAnswer.trim()) {
+      setMsg("Type the corrected answer first — then preview what it touches.");
+      return;
+    }
+    const out = await api.blast(r.rule_id);
+    setPreview({ ruleId: r.rule_id, affected: out.affected.length });
+    setBlast({ ruleId: r.rule_id, items: out.affected, caveat: out.coverage_caveat });
+  };
 
   const load = useCallback(async () => {
     try {
@@ -122,6 +133,7 @@ export function RulesPanel() {
       return;
     }
     const out = await api.supersede(r.rule_id, { answer: { value: newAnswer.trim() } });
+    setPreview(null);
     setBlast({ ruleId: r.rule_id, items: out.blast_radius.affected });
     setMsg(`Rule corrected → new version. Category is now recalibrating; affected decisions are listed below.`);
     setNewAnswer("");
@@ -168,14 +180,34 @@ export function RulesPanel() {
               <button onClick={() => showBlast(r)}>Blast radius</button>
             </div>
             {sel === r.rule_id && (
-              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                <input
-                  value={newAnswer}
-                  onChange={(e) => setNewAnswer(e.target.value)}
-                  placeholder="corrected answer"
-                  style={{ flex: 1 }}
-                />
-                <button className="primary" onClick={() => supersede(r)}>Supersede</button>
+              <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
+                <div className="bb">
+                  Current answer: <b>{ans.value ?? "—"}</b> (v{r.version_number}) · scope{" "}
+                  {scp.mandatory ? JSON.stringify(scp.mandatory) : "any"}
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input
+                    value={newAnswer}
+                    onChange={(e) => setNewAnswer(e.target.value)}
+                    placeholder="corrected answer"
+                    style={{ flex: 1 }}
+                  />
+                  <button onClick={() => previewCorrection(r)}>Preview impact</button>
+                </div>
+                {preview?.ruleId === r.rule_id && (
+                  <div className="detailbox">
+                    <div>
+                      <b>{ans.value ?? "—"}</b> → <b>{newAnswer}</b>. This creates v
+                      {r.version_number + 1}, pauses the category for recalibration, and
+                      flags <b>{preview.affected}</b> past decision(s) below for review.
+                      The old version stays in the ledger — correcting never rewrites history.
+                    </div>
+                    <div className="taprow">
+                      <button className="primary" onClick={() => supersede(r)}>Confirm correction</button>
+                      <button onClick={() => setPreview(null)}>Keep current rule</button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

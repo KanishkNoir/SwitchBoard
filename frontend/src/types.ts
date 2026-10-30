@@ -140,6 +140,22 @@ export interface EvalReport {
   notes: string[];
 }
 
+export interface DebriefRow {
+  decision_id: string;
+  question_text: string;
+  category: string;
+  mode: string;
+  bucket: "answered_by_you" | "denied_by_you" | "auto_answered" | "still_waiting";
+  answer: { value?: string } | string | null;
+  reason_code: string;
+  reason_plain: string;
+  receipt_id: string | null;
+  origin: string | null;
+  dwell_ms: number | null;
+  stage: string;
+  created_at: string;
+}
+
 export interface NoticeItem {
   id: string;
   question_id: string;

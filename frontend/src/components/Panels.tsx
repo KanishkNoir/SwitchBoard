@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import type { AttentionHealth, DriftRow, GroundedObject, InboxItem, NoticeItem, Passport } from "../types";
 
@@ -379,6 +379,75 @@ export function InboxPanel({
           );
         })
       )}
+    </div>
+  );
+}
+
+const BUCKETS: { key: string; title: string; color: string }[] = [
+  { key: "still_waiting", title: "Still waiting on you", color: "var(--c-orange)" },
+  { key: "answered_by_you", title: "You answered", color: "var(--c-green)" },
+  { key: "auto_answered", title: "Switchboard answered", color: "var(--c-blue)" },
+  { key: "denied_by_you", title: "You denied", color: "var(--c-pink)" },
+];
+
+export function DebriefPanel() {
+  const [rows, setRows] = useState<import("../types").DebriefRow[]>([]);
+  const load = useCallback(async () => {
+    try {
+      setRows(await api.debrief());
+    } catch {
+      setRows([]);
+    }
+  }, []);
+  useEffect(() => {
+    load();
+  }, [load]);
+  const answerText = (r: import("../types").DebriefRow) =>
+    typeof r.answer === "object" && r.answer !== null
+      ? String((r.answer as { value?: string }).value ?? "")
+      : String(r.answer ?? "");
+  return (
+    <div className="panel">
+      <div className="panel-head">
+        <h2>Debrief</h2>
+        <button onClick={load}>Refresh</button>
+      </div>
+      <p className="prose" style={{ marginBottom: 12 }}>
+        What happened, in the order it mattered — and why. Every entry carries its
+        receipt; nothing here is rewritten after the fact.
+      </p>
+      {rows.length === 0 && <div className="empty">No decisions yet. Your agents' questions will be explained here.</div>}
+      {BUCKETS.map((b) => {
+        const group = rows.filter((r) => r.bucket === b.key);
+        if (!group.length) return null;
+        return (
+          <div key={b.key} style={{ marginBottom: 16 }}>
+            <div className="cat" style={{ color: b.color, fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em" }}>
+              {b.title}
+            </div>
+            {group.map((r) => (
+              <div className="item" key={r.decision_id}>
+                <span className="cat" style={{ color: catColor(r.category) }}>{r.category}</span>
+                <span className="pri">{new Date(r.created_at).toLocaleString()}</span>
+                <div className="qtext" style={{ fontSize: 15 }}>{r.question_text}</div>
+                <div style={{ fontSize: 13.5, color: "var(--dim)", lineHeight: 1.5 }}>
+                  {r.reason_plain}
+                  {answerText(r) && (
+                    <>
+                      {" "}Answer: <b style={{ color: "var(--ink)" }}>{answerText(r)}</b>
+                    </>
+                  )}
+                  {r.origin && <> · via {r.origin}</>}
+                  {r.dwell_ms !== null && r.dwell_ms !== undefined && (
+                    <> · {(r.dwell_ms / 1000).toFixed(1)}s on screen</>
+                  )}
+                </div>
+                {r.receipt_id && <div className="bb">receipt {r.receipt_id.slice(0, 8)}…</div>}
+              </div>
+            ))}
+          </div>
+        );
+      })}
     </div>
   );
 }
