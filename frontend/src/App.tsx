@@ -226,6 +226,27 @@ export default function App() {
           {inbox.length === 0 && steeringCount > 0 && <span>nothing blocking — steer when ready</span>}
         </div>
       )}
+      {view === "decision" && inbox.length === 0 && steeringCount === 0 && (
+        <div className="status-strip">
+          <button
+            className="linkbtn"
+            onClick={async () => {
+              setSimError("");
+              try {
+                const out = await api.simulation();
+                setSimBeats({ run: out.run, beats: out.beats });
+                loadInbox();
+                setNotice(`Simulation live: ${out.questions.length} questions, ${out.proposals.length} proposals across 3 agents.`);
+                setTimeout(() => setNotice(""), 8000);
+              } catch {
+                setSimError("The simulation didn't start — the hub may be unreachable. Nothing was seeded.");
+              }
+            }}
+          >
+            Quiet in here — preview with the 3-agent simulation →
+          </button>
+        </div>
+      )}
 
       {onboarding && !onboarding.completed && !wizardDismissed ? (
         <main className="view-morph" style={{ gridTemplateColumns: "minmax(0, 640px)", justifyContent: "center" }}>
@@ -316,24 +337,32 @@ export default function App() {
               steered four ways (cheaper, bolder, simpler…) and how SAM 3.1 grounds a
               question in a photo. Your agents never see this.
               <div className="taprow" style={{ marginTop: 12 }}>
-                <button
-                  className="primary"
-                  onClick={async () => {
-                    setSimError("");
-                    try {
-                      const out = await api.simulation();
-                      setSimBeats({ run: out.run, beats: out.beats });
-                      setNotice(`Simulation live: ${out.questions.length} questions, ${out.proposals.length} proposals across 3 agents.`);
-                      setTimeout(() => setNotice(""), 8000);
-                      loadInbox();
-                      window.scrollTo({ top: 0, behavior: "smooth" });
-                    } catch {
-                      setSimError("The simulation didn't start — the hub may be unreachable. Nothing was seeded.");
-                    }
-                  }}
-                >
-                  Run multi-agent simulation (3 agents · 3 projects)
-                </button>
+                {inbox.some((i) => (i.agent_name ?? "").startsWith("sim-")) ? (
+                  <button
+                    className="primary"
+                    onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+                  >
+                    Simulation already live — take me to it ↑
+                  </button>
+                ) : (
+                  <button
+                    className="primary"
+                    onClick={async () => {
+                      setSimError("");
+                      try {
+                        const out = await api.simulation();
+                        setSimBeats({ run: out.run, beats: out.beats });
+                        setNotice(`Simulation live: ${out.questions.length} questions, ${out.proposals.length} proposals across 3 agents.`);
+                        setTimeout(() => setNotice(""), 8000);
+                        loadInbox();
+                      } catch {
+                        setSimError("The simulation didn't start — the hub may be unreachable. Nothing was seeded.");
+                      }
+                    }}
+                  >
+                    Run multi-agent simulation (3 agents · 3 projects)
+                  </button>
+                )}
               </div>
               {simError && <div className="empty" role="alert">{simError}</div>}
               {simBeats && (
@@ -344,7 +373,11 @@ export default function App() {
                       <li key={i}>{b}</li>
                     ))}
                   </ol>
-                  <div className="bb">Scroll up: the questions are in “Waiting on you”, the proposals in “Steer an agent”.</div>
+                  <div className="taprow" style={{ marginTop: 10 }}>
+                    <button className="primary" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
+                      Take me to them ↑
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
