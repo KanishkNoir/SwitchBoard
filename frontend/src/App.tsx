@@ -32,9 +32,15 @@ export default function App() {
   const [steeringCount, setSteeringCount] = useState(0);
   const [simBeats, setSimBeats] = useState<{ run: string; beats: string[] } | null>(null);
   const [simError, setSimError] = useState("");
+  // Capability handshake: "Ready" means compatible, not just reachable. A
+  // stale server (healthy but missing routes) is reported as too old.
+  const [missingCaps, setMissingCaps] = useState<string[] | null>(null);
+  const [inboxError, setInboxError] = useState(false);
+  const [onboardingFailed, setOnboardingFailed] = useState(false);
 
   useEffect(() => {
-    api.onboarding().then(setOnboarding).catch(() => setOnboarding(null));
+    api.onboarding().then((s) => { setOnboarding(s); setOnboardingFailed(false); })
+      .catch(() => { setOnboarding(null); setOnboardingFailed(true); });
   }, []);
   const segRef = useRef<HTMLDivElement>(null);
   const [segInk, setSegInk] = useState({ x: 2, w: 0 });
@@ -55,23 +61,64 @@ export default function App() {
   const loadInbox = useCallback(async () => {
     try {
       const list = await api.inbox();
+      setInboxError(false);
       const h = JSON.stringify(list.map((i) => [i.id, i.question_text]));
       if (h === inboxHash.current) return; // unchanged: no re-render
       inboxHash.current = h;
       setInbox(list);
     } catch {
-      /* queue panel keeps its last state */
+      setInboxError(true); // failed load is an error, never an empty queue
     }
   }, []);
+
+  // Every surface the UI renders from a backend route. If the server answers
+  // /health but lacks any of these, it is too old — never "Ready".
+  const REQUIRED_CAPS = ["inbox", "steering", "debrief", "onboarding", "simulation"];
+
+  const runSimulation = async () => {
+    setSimError("");
+    if (missingCaps && missingCaps.includes("simulation")) {
+      setSimError(
+        `This server is too old for sample agents (missing: ${missingCaps.join(", ")}). ` +
+        "Restart it from the latest code, then try again."
+      );
+      return;
+    }
+    try {
+      // One live simulation at a time: re-seeding while sample proposals are
+      // still open would duplicate everything.
+      const live = await api.steering();
+      if (live.some((s) => (s.agent?.name ?? "").startsWith("sim-"))) {
+        setSimError("Sample agents are already live below — steer or resolve those proposals before seeding again.");
+        return;
+      }
+    } catch {
+      /* fall through and let the seed attempt report its own error */
+    }
+    try {
+      const result = await api.simulation();
+      setSimBeats({ run: result.run, beats: result.beats });
+      await loadInbox();
+      setNotice(`Sample queue loaded: ${result.questions.length} questions and ${result.proposals.length} proposals.`);
+      setTimeout(() => setNotice(""), 8000);
+    } catch {
+      setSimError("Sample preview failed — the hub connection dropped mid-seed. Check the hub and retry.");
+    }
+  };
 
   useEffect(() => {
     api
       .health()
       .then((h) => {
-        setHealth("Connected");
+        const missing = REQUIRED_CAPS.filter((c) => !(h.capabilities ?? []).includes(c));
+        setMissingCaps(missing);
+        setHealth(missing.length === 0 ? "Connected" : "Server too old");
         setT3(h.t3_enabled);
       })
-      .catch(() => setHealth("server unreachable"));
+      .catch(() => {
+        setHealth("server unreachable");
+        setMissingCaps(null);
+      });
     loadInbox();
     return subscribeStream(loadInbox);
   }, [loadInbox]);
@@ -209,7 +256,11 @@ export default function App() {
               className="dot"
               style={{ background: health === "Connected" ? "var(--green)" : "var(--red, #d70015)" }}
             />
-            {health === "Connected" ? "Ready" : "Can't reach your hub — answers will wait"}
+            {health === "Connected"
+              ? "Ready"
+              : health === "Server too old"
+                ? "Server too old — restart it from the latest code"
+                : "Can't reach your hub — answers will wait"}
           </span>
           <span className="tier">
             {t3 ? "Reasoning: on" : "Reasoning: off — questions will wait for you"}
@@ -235,6 +286,33 @@ export default function App() {
         </div>
         {notice && <span className="notice">{notice}</span>}
       </nav>
+      {view === "decision" && (
+        <section className="desk-hero" aria-label="Switchboard decision desk">
+          <div className="desk-copy">
+            <span className="desk-kicker"><i /> CROSS-AGENT DECISION CONTROL</span>
+            <h2>Your agents. One decision desk.</h2>
+            <p>Shared answers, clear boundaries, and a human in control.</p>
+          </div>
+          <div className="desk-routing" aria-hidden="true">
+            <div className="route-agents"><i /><i /><i /><span>AGENTS</span></div>
+            <span className="route-wire" />
+            <div className="route-hub">S<span>B</span></div>
+            <span className="route-wire" />
+            <div className="route-person"><b>YOU</b><i /></div>
+          </div>
+        </section>
+      )}
+      {missingCaps !== null && missingCaps.length > 0 && (
+        <div className="compat-banner" role="alert">
+          This server answers but is too old for this UI — missing: {missingCaps.join(", ")}.
+          Restart your server from the latest code. Nothing below it can be trusted until then.
+        </div>
+      )}
+      {onboardingFailed && (
+        <div className="compat-banner compat-dim" role="alert">
+          Setup state couldn't be loaded — showing defaults. Retry from Refresh below.
+        </div>
+      )}
       {view === "decision" && (inbox.length > 0 || steeringCount > 0) && (
         <div className="status-strip">
           {inbox.length > 0 && <span>{inbox.length} waiting on you</span>}
@@ -242,28 +320,6 @@ export default function App() {
           {inbox.length === 0 && steeringCount > 0 && <span>nothing blocking — steer when ready</span>}
         </div>
       )}
-      {view === "decision" && inbox.length === 0 && steeringCount === 0 && (
-        <div className="status-strip">
-          <button
-            className="linkbtn"
-            onClick={async () => {
-              setSimError("");
-              try {
-                const out = await api.simulation();
-                setSimBeats({ run: out.run, beats: out.beats });
-                loadInbox();
-                setNotice(`Simulation live: ${out.questions.length} questions, ${out.proposals.length} proposals across 3 agents.`);
-                setTimeout(() => setNotice(""), 8000);
-              } catch {
-                setSimError("The simulation didn't start — the hub may be unreachable. Nothing was seeded.");
-              }
-            }}
-          >
-            Quiet in here — preview with the 3-agent simulation →
-          </button>
-        </div>
-      )}
-
       {onboarding && !onboarding.completed && !wizardDismissed ? (
         <main className="view-morph" style={{ gridTemplateColumns: "minmax(0, 640px)", justifyContent: "center" }}>
           <OnboardingWizard state={onboarding} onDone={() => setWizardDismissed(true)} />
@@ -271,7 +327,7 @@ export default function App() {
       ) : view === "debrief" ? (
         <main className="view-morph" style={{ gridTemplateColumns: "1fr" }}>
           <div>
-            <DebriefPanel />
+            <DebriefPanel onGoToDecide={() => setView("decision")} />
             <div className="taprow" style={{ marginTop: 12 }}>
               <button className="linkbtn" onClick={() => setView("evaluation")}>
                 Proof — evaluation &amp; replay evidence →
@@ -299,39 +355,26 @@ export default function App() {
       <>
       <main className="view-morph">
         <section>
-          {/* Order by blocking-ness: questions that wait on you outrank
-              proposals you may steer whenever you like. */}
-          {inbox.length > 0 ? (
-            <>
-              <InboxPanel
-                items={inbox}
-                onRefresh={loadInbox}
-                onAnswered={(m) => {
-                  setNotice(m);
-                  setTimeout(() => setNotice(""), 6000);
-                }}
-              />
-              <SteeringPanel onCount={setSteeringCount} />
-            </>
-          ) : (
-            <>
-              <SteeringPanel
-                onCount={setSteeringCount}
-                onEvent={(m) => {
-                  setNotice(m);
-                  setTimeout(() => setNotice(""), 6000);
-                }}
-              />
-              <InboxPanel
-                items={inbox}
-                onRefresh={loadInbox}
-                onAnswered={(m) => {
-                  setNotice(m);
-                  setTimeout(() => setNotice(""), 6000);
-                }}
-              />
-            </>
-          )}
+          {/* Keep decisions first; steering is optional until a proposal exists. */}
+          <InboxPanel
+            items={inbox}
+            onRefresh={loadInbox}
+            loadError={inboxError}
+            onPreviewSample={runSimulation}
+            simulationError={simError}
+            proposalCount={steeringCount}
+            onAnswered={(m) => {
+              setNotice(m);
+              setTimeout(() => setNotice(""), 6000);
+            }}
+          />
+          <SteeringPanel
+            onCount={setSteeringCount}
+            onEvent={(m) => {
+              setNotice(m);
+              setTimeout(() => setNotice(""), 6000);
+            }}
+          />
         </section>
 
         <aside>
@@ -352,35 +395,6 @@ export default function App() {
               Not part of the real flow — a sandbox showing how a suggestion can be
               steered four ways (cheaper, bolder, simpler…) and how SAM 3.1 grounds a
               question in a photo. Your agents never see this.
-              <div className="taprow" style={{ marginTop: 12 }}>
-                {inbox.some((i) => (i.agent_name ?? "").startsWith("sim-")) ? (
-                  <button
-                    className="primary"
-                    onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-                  >
-                    Simulation already live — take me to it ↑
-                  </button>
-                ) : (
-                  <button
-                    className="primary"
-                    onClick={async () => {
-                      setSimError("");
-                      try {
-                        const out = await api.simulation();
-                        setSimBeats({ run: out.run, beats: out.beats });
-                        setNotice(`Simulation live: ${out.questions.length} questions, ${out.proposals.length} proposals across 3 agents.`);
-                        setTimeout(() => setNotice(""), 8000);
-                        loadInbox();
-                      } catch {
-                        setSimError("The simulation didn't start — the hub may be unreachable. Nothing was seeded.");
-                      }
-                    }}
-                  >
-                    Run multi-agent simulation (3 agents · 3 projects)
-                  </button>
-                )}
-              </div>
-              {simError && <div className="empty" role="alert">{simError}</div>}
               {simBeats && (
                 <div className="sim-beats">
                   <div className="trajectory-title">Simulation live — your four beats</div>

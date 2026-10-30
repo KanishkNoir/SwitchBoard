@@ -118,9 +118,17 @@ class AskIn(BaseModel):
     parent_receipts: list = []
 
 
+# Capability handshake: the UI checks this list, not just reachability, so a
+# stale server can never pose as a compatible one. Add a name here whenever a
+# UI surface depends on a new backend route.
+API_CAPABILITIES = ["inbox", "steering", "debrief", "onboarding", "taste",
+                    "simulation", "passport", "notices", "resolve"]
+
+
 @app.get("/health")
 def health():
-    return {"status": "ok", "version": "0.2.0", "t3_enabled": svc.ladder.t3 is not None}
+    return {"status": "ok", "version": "0.2.0", "t3_enabled": svc.ladder.t3 is not None,
+            "capabilities": API_CAPABILITIES}
 
 
 @app.post("/api/agents/register")

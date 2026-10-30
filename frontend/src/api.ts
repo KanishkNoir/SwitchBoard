@@ -29,7 +29,7 @@ async function get<T>(path: string): Promise<T> {
 }
 
 export const api = {
-  health: () => get<{ status: string; t3_enabled: boolean }>("/health"),
+  health: () => get<{ status: string; t3_enabled: boolean; capabilities?: string[] }>("/health"),
   inbox: () => get<InboxItem[]>("/inbox"),
   passport: (category: string) => get<Passport>(`/passport/${encodeURIComponent(category)}`),
   tradeoff: (options: unknown[]) => post<DecisionPayload>("/demo/tradeoff", { options }),

@@ -52,12 +52,14 @@ export default function SteeringPanel({ onEvent, onCount }: {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [strong, setStrong] = useState(false);
   const [msg, setMsg] = useState("");
+  const [loadError, setLoadError] = useState(false);
   const touch = useRef<{ x: number; y: number } | null>(null);
   const lastHash = useRef("");
 
   const load = useCallback(async () => {
     try {
       const list = await api.steering();
+      setLoadError(false);
       // Unchanged payloads never touch state: no re-render, no list churn.
       const h = JSON.stringify(list.map((s) => [s.id, s.version, s.status, s.updated_at]));
       if (h === lastHash.current) return;
@@ -66,9 +68,10 @@ export default function SteeringPanel({ onEvent, onCount }: {
       onCount?.(list.length);
       setActiveId((cur) => (cur && list.some((s) => s.id === cur) ? cur : list[0]?.id ?? null));
     } catch {
-      /* keep last state */
+      // A failed load is an error, never an empty pad.
+      if (sessions.length === 0) setLoadError(true);
     }
-  }, [onCount]);
+  }, [onCount, sessions.length]);
 
   useEffect(() => {
     load();
@@ -164,16 +167,16 @@ export default function SteeringPanel({ onEvent, onCount }: {
   };
 
   if (!active) {
+    // A failed load is an error panel, never a silent gap.
+    if (!loadError) return null;
     return (
-      <div className="panel steering-panel steering-idle">
+      <div className="panel steering-panel" role="alert">
         <div className="panel-head">
           <h2>Steer an agent</h2>
-          <button className="linkbtn" onClick={async () => { await api.demoSteeringProposal(); load(); }}>
-            Preview with an example
-          </button>
+          <button className="linkbtn" onClick={load}>Retry</button>
         </div>
-        <div className="empty" style={{ padding: "2px 0" }}>
-          No proposals to steer right now — when an agent has a proposal instead of a yes/no question, it appears here.
+        <div className="empty">
+          Couldn't reach your proposals — a connection problem, not an empty pad.
         </div>
       </div>
     );

@@ -55,10 +55,18 @@ export function InboxPanel({
   items,
   onRefresh,
   onAnswered,
+  onPreviewSample,
+  simulationError,
+  proposalCount = 0,
+  loadError = false,
 }: {
   items: InboxItem[];
   onRefresh: () => void;
   onAnswered?: (msg: string) => void;
+  onPreviewSample?: () => void;
+  simulationError?: string;
+  proposalCount?: number;
+  loadError?: boolean;
 }) {
   const [customOpen, setCustomOpen] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState<string | null>(null);
@@ -213,10 +221,36 @@ export function InboxPanel({
         <h2>Waiting on you</h2>
         <button onClick={onRefresh}>Refresh</button>
       </div>
-      {items.length === 0 ? (
-        <div className="empty">
-          All clear. When an agent needs you, its question lands here — one tap and
-          you're done.
+      {loadError && items.length === 0 ? (
+        <div className="queue-empty" role="alert">
+          <div className="queue-empty-copy">
+            <span className="queue-empty-kicker">LOAD FAILED</span>
+            <h3>Couldn't reach your questions.</h3>
+            <p>This is a connection problem, not an empty queue. Your questions are still waiting on the server.</p>
+          </div>
+          <div className="queue-empty-action">
+            <button onClick={onRefresh}>Retry</button>
+          </div>
+        </div>
+      ) : items.length === 0 ? (
+        <div className="queue-empty">
+          <div className="queue-empty-mark" aria-hidden="true"><i /><i /><i /></div>
+          <div className="queue-empty-copy">
+            <span className="queue-empty-kicker">QUEUE CLEAR</span>
+            <h3>{proposalCount > 0 ? "No questions are waiting." : "Nothing needs your attention."}</h3>
+            <p>
+              {proposalCount > 0
+                ? `${proposalCount} proposal${proposalCount === 1 ? " is" : "s are"} ready to review below.`
+                : "When an agent needs a decision, it will show up here with its scope and risk in view."}
+            </p>
+          </div>
+          {proposalCount === 0 && (
+            <div className="queue-empty-action">
+              <button onClick={onPreviewSample}>Preview with sample agents</button>
+              <span>Adds simulated questions to this local inbox.</span>
+            </div>
+          )}
+          {simulationError && <div className="queue-empty-error" role="alert">{simulationError}</div>}
         </div>
       ) : (
         items.map((i) => {
@@ -452,15 +486,18 @@ const BUCKETS: { key: string; title: string; color: string }[] = [
   { key: "denied_by_you", title: "You denied", color: "var(--c-pink)" },
 ];
 
-export function DebriefPanel() {
+export function DebriefPanel({ onGoToDecide }: { onGoToDecide?: () => void }) {
   const [rows, setRows] = useState<import("../types").DebriefRow[]>([]);
+  const [loadError, setLoadError] = useState(false);
   const load = useCallback(async () => {
     try {
       setRows(await api.debrief());
+      setLoadError(false);
     } catch {
-      setRows([]);
+      // A failed load is an error box, never a "no decisions yet" story.
+      if (rows.length === 0) setLoadError(true);
     }
-  }, []);
+  }, [rows.length]);
   useEffect(() => {
     load();
     return subscribeStream(load); // history follows events, not a timer
@@ -480,7 +517,21 @@ export function DebriefPanel() {
         receipt; nothing here is rewritten after the fact.
       </p>
       <NoticesPanel />
-      {rows.length === 0 && <div className="empty">No decisions yet. Your agents' questions will be explained here.</div>}
+      {loadError && rows.length === 0 ? (
+        <div className="history-empty" role="alert">
+          <span className="history-empty-kicker">LOAD FAILED</span>
+          <h3>Couldn't reach your history.</h3>
+          <p>This is a connection problem — your trail is still on the server.</p>
+          <button className="linkbtn" onClick={load}>Retry</button>
+        </div>
+      ) : rows.length === 0 && (
+        <div className="history-empty">
+          <span className="history-empty-kicker">YOUR DECISION TRAIL</span>
+          <h3>No decisions to review yet.</h3>
+          <p>Once you answer a question or a rule handles one, its reason and receipt will appear here.</p>
+          {onGoToDecide && <button className="linkbtn" onClick={onGoToDecide}>Go to the decision desk →</button>}
+        </div>
+      )}
       {BUCKETS.map((b) => {
         const group = rows.filter((r) => r.bucket === b.key);
         if (!group.length) return null;

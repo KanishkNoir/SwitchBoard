@@ -35,3 +35,12 @@ def test_api_ask_requires_agent_key():
 def test_ui_served():
     r = client.get("/")
     assert r.status_code == 200 and "Switchboard" in r.text
+
+
+def test_health_advertises_capabilities():
+    # The UI's compatibility handshake depends on this list: every surface
+    # the frontend renders from a backend route must be named here.
+    h = client.get("/health").json()
+    for cap in ["inbox", "steering", "debrief", "onboarding", "simulation",
+                "taste", "passport", "notices", "resolve"]:
+        assert cap in h["capabilities"], f"missing capability: {cap}"
