@@ -388,7 +388,10 @@ export function NoticesPanel({ onAnswered }: { onAnswered?: (msg: string) => voi
       setNotices([]);
     }
   }, []);
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+    return subscribeStream(load);
+  }, [load]);
   if (notices.length === 0) return null;
   return (
     <div style={{ marginBottom: 16 }}>
