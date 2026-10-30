@@ -517,6 +517,15 @@ export function PassportPanel() {
                 </dd>
               </>
             )}
+            {passport.taste && passport.taste.length > 0 && (
+              <>
+                <dt>How you steer</dt>
+                <dd>
+                  {passport.taste.map(([label, n]) => `${label} ×${n}`).join(" · ")}
+                  {" "}— your leans here, mirrored back; never a rule.
+                </dd>
+              </>
+            )}
             <dt>Policy version</dt>
             <dd>{passport.policy_version}</dd>
           </dl>

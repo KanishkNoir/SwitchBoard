@@ -49,6 +49,37 @@ def ask(request_id: str, question: str, category: str, intent_type: str = "unkno
 
 
 @mcp.tool()
+def submit_proposal(title: str, proposal_text: str, category: str, directions: list) -> dict:
+    """Submit a steerable proposal: your draft plus 2-4 directions you can move in.
+
+    Each direction: {"edge": "top|left|right|bottom", "label": "Cheaper",
+    "expected_effect": "what changes if the human steers this way"}.
+    The human steers from Switchboard; steering never accepts your proposal.
+    Poll get_steering for nudges, answer with revise_proposal, and stop when
+    get_steering reports accepted/rejected.
+    """
+    if hub() is not None:
+        return hub().submit_proposal(title, proposal_text, category, directions)
+    return svc().submit_proposal(_agent(), title, proposal_text, category, directions)
+
+
+@mcp.tool()
+def get_steering(session_id: str) -> dict:
+    """Poll for the human's latest steer (or final acceptance) on your proposal."""
+    if hub() is not None:
+        return hub().pending_steer(session_id)
+    return svc().pending_steer(_agent(), session_id)
+
+
+@mcp.tool()
+def revise_proposal(session_id: str, proposal_text: str, note: str = "") -> dict:
+    """Answer a steer with a revised version of your proposal."""
+    if hub() is not None:
+        return hub().revise_proposal(session_id, proposal_text, note or None)
+    return svc().revise_proposal(_agent(), session_id, proposal_text, note or None)
+
+
+@mcp.tool()
 def get_rules(category: str | None = None) -> list:
     """List active user rules this agent may read (read-only)."""
     if hub() is not None:

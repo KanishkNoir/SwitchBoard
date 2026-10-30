@@ -53,3 +53,27 @@ class HubClient:
                 "dependent_id": dependent_id, "relationship": relationship, "status": status})
         except Exception:
             return {"recorded": False, "reason_code": "hub_unreachable"}
+
+    # Steering fails closed too: no hub, no proposal — never a local guess.
+    def submit_proposal(self, title, proposal_text, category, directions) -> dict:
+        try:
+            return self._post("/api/steering/submit", {
+                "title": title, "proposal_text": proposal_text,
+                "category": category, "directions": directions})
+        except Exception:
+            return {"status": "deferred", "reason_code": "hub_unreachable", "id": None}
+
+    def revise_proposal(self, session_id, proposal_text, note=None) -> dict:
+        try:
+            return self._post("/api/steering/revise", {
+                "session_id": session_id, "proposal_text": proposal_text, "note": note})
+        except Exception:
+            return {"status": "deferred", "reason_code": "hub_unreachable", "id": session_id}
+
+    def pending_steer(self, session_id) -> dict:
+        try:
+            resp = self._client.get(f"/api/steering/pending/{session_id}")
+            resp.raise_for_status()
+            return resp.json()
+        except Exception:
+            return {"status": "unknown", "reason_code": "hub_unreachable", "instruction": None}

@@ -65,6 +65,13 @@ export const api = {
     post<import("./types").OnboardingState>("/onboarding/complete", body),
   answerInbox: (itemId: string, body: unknown) =>
     post<{ decision_id: string; rule?: { action: string } | null }>(`/inbox/${itemId}/answer`, body),
+  steering: () => get<import("./types").SteeringSession[]>("/steering"),
+  demoSteeringProposal: () => post<import("./types").SteeringSession>("/demo/steering-proposal", {}),
+  steerSession: (id: string, edge: string, magnitude: number) =>
+    post<{ instruction: unknown }>(`/steering/${id}/steer`, { edge, magnitude }),
+  resolveSteering: (id: string, outcome: "accepted" | "rejected") =>
+    post<import("./types").SteeringSession>(`/steering/${id}/resolve`, { outcome }),
+  taste: () => get<{ category: string; leans: [string, number][] }[]>("/taste"),
   runEvaluation: () => post<import("./types").EvalReport>("/evaluation/replay", {}),
   revalidate: (decisionId: string) =>
     post<{ decision: string; answer?: { value?: string } | null; reason_code: string }>(

@@ -108,6 +108,33 @@ main {
   /* inbox is the first column now, so it already comes first on a phone */
 }
 
+/* ---------- steering centrepiece ---------- */
+.steering-panel { margin-bottom: 20px; }
+.proposal-text {
+  font-size: 16px; line-height: 1.6; white-space: pre-wrap;
+  padding: 16px 18px; background: var(--inset);
+  border-bottom: 1px solid var(--line); max-height: 320px; overflow: auto;
+}
+.steer-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.steer-tab {
+  font-size: 13px; font-weight: 500; padding: 7px 12px; border-radius: 999px;
+  background: var(--inset); border: 1px solid var(--line); color: var(--dim);
+}
+.steer-tab.active { color: var(--ink); border-color: color-mix(in srgb, var(--blue) 45%, var(--line)); }
+.steer-foot { display: flex; align-items: center; gap: 10px; margin-top: 12px; padding: 0 2px; }
+.chip {
+  font-size: 12.5px; font-weight: 600; padding: 6px 12px; border-radius: 999px;
+  background: var(--inset); border: 1px solid var(--line); color: var(--dim);
+}
+.chip.active { color: var(--ink); background: color-mix(in srgb, var(--c-orange) 14%, var(--inset)); }
+.steer-resolve { margin-top: 14px; }
+.trajectory { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 12px; }
+.trajectory-title { font-size: 12px; font-weight: 600; color: var(--faint); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+.trajectory-row { display: flex; gap: 9px; align-items: baseline; font-size: 13.5px; color: var(--dim); padding: 3px 0; }
+.trajectory-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--c-blue); flex: none; position: relative; top: -1px; }
+.trajectory-row:nth-child(3n) .trajectory-dot { background: var(--c-green); }
+.trajectory-row:nth-child(3n+1) .trajectory-dot { background: var(--c-orange); }
+
 /* Demo playground sits under the real flow, collapsed by default. */
 .demo-zone { max-width: 1200px; margin: 0 auto; padding: 8px 20px 4px; }
 @media (max-width: 900px) {

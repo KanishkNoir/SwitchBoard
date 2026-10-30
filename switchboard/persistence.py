@@ -106,6 +106,15 @@ CREATE TABLE IF NOT EXISTS action_reviews(
   action_hash TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'held', requested_by TEXT NOT NULL,
   approved_by TEXT, approved_at TEXT, execute_not_before TEXT, expires_at TEXT,
   executed_at TEXT, execution_result_json TEXT);
+CREATE TABLE IF NOT EXISTS steering_sessions(
+  id TEXT PRIMARY KEY, agent_id TEXT NOT NULL REFERENCES agents(id), category TEXT NOT NULL,
+  title TEXT NOT NULL, proposal_text TEXT NOT NULL, directions_json TEXT NOT NULL,
+  version INTEGER NOT NULL DEFAULT 1, status TEXT NOT NULL DEFAULT 'open',
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS steering_revisions(
+  id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES steering_sessions(id),
+  version INTEGER NOT NULL, proposal_text TEXT NOT NULL, note TEXT,
+  created_at TEXT NOT NULL, UNIQUE(session_id, version));
 CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type, occurred_at);
 CREATE INDEX IF NOT EXISTS idx_questions_cat ON questions(category, created_at);
 CREATE INDEX IF NOT EXISTS idx_dru_rule ON decision_rule_uses(rule_version_id);

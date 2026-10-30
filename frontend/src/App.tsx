@@ -5,6 +5,7 @@ import EvaluationPanel from "./components/Evaluation";
 import { AgentsPanel, RulesPanel } from "./components/Manage";
 import { DebriefPanel, InboxPanel, ObjectsPanel, PassportPanel } from "./components/Panels";
 import { OnboardingWizard } from "./components/Onboarding";
+import SteeringPanel from "./components/Steering";
 import type { OnboardingState } from "./types";
 import type { DecisionPayload, GroundedObject, InboxItem, TradeOption } from "./types";
 
@@ -247,6 +248,12 @@ export default function App() {
       <>
       <main className="view-morph">
         <section>
+          <SteeringPanel
+            onEvent={(m) => {
+              setNotice(m);
+              setTimeout(() => setNotice(""), 6000);
+            }}
+          />
           <InboxPanel
             items={inbox}
             onRefresh={loadInbox}

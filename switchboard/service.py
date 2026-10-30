@@ -980,6 +980,7 @@ class SwitchboardService:
                            "fresh_count": h["fresh_count"], "status": h["status"]} for h in holds],
                 "hold_note": "Sliced smoke-test hold: catches gross non-generalisation; certifies no risk target.",
                 "gold_sample_count": sample,
+                "taste": next((t["leans"] for t in self.taste_profile(category) if t["category"] == category), []),
                 "risk_gate": self.gate_readiness(category),
                 "limitations": ["Sample metrics are historical measurements, not guarantees about the next decision.",
                                 "Dependency coverage is bounded by agent-reported record_use edges."],
@@ -1002,6 +1003,194 @@ class SwitchboardService:
             self.store.emit("system", "switchboard", "category.frozen", "category", category,
                             {"case_id": case_id})
         return {"passed": bool(passed), "category_stage": self.category(category)["stage"]}
+
+    # ---------- steering: the centrepiece ----------
+    # Agents submit proposals with declared directions; humans steer. Steering
+    # NEVER accepts or authorizes: acceptance is a separate deliberate action,
+    # and locked categories cannot be steered at all (nothing to authorize by
+    # nudge). The agent owns revisions; Switchboard owns the surface, the
+    # ledger, and the learned taste.
+    STEER_EDGES = ("top", "left", "right", "bottom")
+
+    def _validate_directions(self, directions):
+        if not isinstance(directions, list) or not (2 <= len(directions) <= 4):
+            raise SwitchboardError("INVALID_SCHEMA", "a steerable proposal needs 2-4 directions")
+        seen = set()
+        out = []
+        for d in directions:
+            if not isinstance(d, dict):
+                raise SwitchboardError("INVALID_SCHEMA", "each direction must be an object")
+            edge = str(d.get("edge", ""))
+            label = str(d.get("label", "")).strip()
+            effect = str(d.get("expected_effect", "")).strip()
+            if edge not in self.STEER_EDGES:
+                raise SwitchboardError("INVALID_SCHEMA", f"unknown edge: {edge or '(missing)'}")
+            if edge in seen:
+                raise SwitchboardError("INVALID_SCHEMA", f"duplicate edge: {edge}")
+            if not label or not effect:
+                raise SwitchboardError("INVALID_SCHEMA", "each direction needs a label and an expected_effect")
+            seen.add(edge)
+            out.append({"edge": edge, "label": label[:80], "expected_effect": effect[:200]})
+        return out
+
+    def submit_proposal(self, agent, title, proposal_text, category, directions) -> dict:
+        title = str(title or "").strip()
+        proposal_text = str(proposal_text or "").strip()
+        if not title or not proposal_text or not category:
+            raise SwitchboardError("INVALID_SCHEMA", "title, proposal_text and category required")
+        if len(proposal_text) > 8000:
+            raise SwitchboardError("INVALID_SCHEMA", "proposal too long")
+        cat = self.category(category)
+        if cat["locked"]:
+            raise SwitchboardError("LOCKED_CATEGORY",
+                                   "locked categories always need a deliberate answer; they cannot be steered")
+        dirs = self._validate_directions(directions)
+        sid = new_id()
+        ts = now_iso()
+        self.store.execute(
+            "INSERT INTO steering_sessions(id,agent_id,category,title,proposal_text,directions_json,"
+            "version,status,created_at,updated_at) VALUES(?,?,?,?,?,?,1,'open',?,?)",
+            (sid, agent["id"], category, title[:200], proposal_text, json.dumps(dirs), ts, ts))
+        self.store.execute(
+            "INSERT INTO steering_revisions(id,session_id,version,proposal_text,note,created_at)"
+            " VALUES(?,?,1,?,NULL,?)", (new_id(), sid, proposal_text, ts))
+        self.store.emit("agent", agent["id"], "steering.proposal_submitted", "steering_session", sid,
+                        {"category": category, "version": 1})
+        return self.steering_session(sid)
+
+    def steering_session(self, session_id, agent=None) -> dict:
+        s = self.store.query_one("SELECT * FROM steering_sessions WHERE id=?", (session_id,))
+        if not s:
+            raise SwitchboardError("NOT_FOUND", "steering session")
+        if agent is not None and s["agent_id"] != agent["id"]:
+            raise SwitchboardError("NOT_FOUND", "steering session")
+        agent_row = self.store.query_one("SELECT id,name,kind FROM agents WHERE id=?", (s["agent_id"],))
+        revisions = self.store.query(
+            "SELECT version,proposal_text,note,created_at FROM steering_revisions"
+            " WHERE session_id=? ORDER BY version", (session_id,))
+        events = self.store.query(
+            "SELECT event_type,actor_type,payload_json,occurred_at FROM events"
+            " WHERE object_type='steering_session' AND object_id=? ORDER BY occurred_at, rowid",
+            (session_id,))
+        trajectory = []
+        for e in events:
+            try:
+                payload = json.loads(e["payload_json"] or "{}")
+            except ValueError:
+                payload = {}
+            trajectory.append({"event": e["event_type"], "actor": e["actor_type"],
+                               "at": e["occurred_at"], **payload})
+        pending = None
+        for t in reversed(trajectory):
+            if t["event"] == "steering.applied":
+                pending = t
+                break
+            if t["event"] in ("steering.proposal_revised", "steering.accepted", "steering.rejected"):
+                break
+        return {"id": s["id"], "agent": agent_row, "category": s["category"], "title": s["title"],
+                "proposal_text": s["proposal_text"], "directions": json.loads(s["directions_json"]),
+                "version": s["version"], "status": s["status"],
+                "pending_steer": pending, "revisions": revisions, "trajectory": trajectory,
+                "created_at": s["created_at"], "updated_at": s["updated_at"]}
+
+    def list_steering(self, status="open") -> list:
+        rows = self.store.query(
+            "SELECT id FROM steering_sessions WHERE status=? ORDER BY updated_at DESC", (status,))
+        return [self.steering_session(r["id"]) for r in rows]
+
+    def steer(self, session_id, edge, magnitude=1, actor="local_user") -> dict:
+        """Record one nudge. Never resolves the session: no acceptance by gesture."""
+        s = self.store.query_one("SELECT * FROM steering_sessions WHERE id=?", (session_id,))
+        if not s:
+            raise SwitchboardError("NOT_FOUND", "steering session")
+        if s["status"] != "open":
+            raise SwitchboardError("CONFLICT", "session is closed")
+        dirs = {d["edge"]: d for d in json.loads(s["directions_json"])}
+        if edge not in dirs:
+            raise SwitchboardError("INVALID_SCHEMA", f"edge {edge} was not declared by the agent")
+        try:
+            mag = float(magnitude)
+        except (TypeError, ValueError):
+            raise SwitchboardError("INVALID_SCHEMA", "magnitude must be a number")
+        mag = max(0.25, min(2.0, mag))
+        d = dirs[edge]
+        instruction = {"type": "steer", "edge": edge, "label": d["label"],
+                       "expected_effect": d["expected_effect"], "magnitude": mag,
+                       "session_id": session_id, "base_version": s["version"]}
+        self.store.execute("UPDATE steering_sessions SET updated_at=? WHERE id=?",
+                           (now_iso(), session_id))
+        self.store.emit("human", actor, "steering.applied", "steering_session", session_id,
+                        instruction, evidence_class="human_confirmed")
+        return {"instruction": instruction, "session": self.steering_session(session_id)}
+
+    def revise_proposal(self, agent, session_id, proposal_text, note=None) -> dict:
+        """Agent answers a steer with a new version. Only the owning agent."""
+        s = self.store.query_one("SELECT * FROM steering_sessions WHERE id=? AND agent_id=?",
+                                 (session_id, agent["id"]))
+        if not s:
+            raise SwitchboardError("NOT_FOUND", "steering session")
+        if s["status"] != "open":
+            raise SwitchboardError("CONFLICT", "session is closed")
+        proposal_text = str(proposal_text or "").strip()
+        if not proposal_text or len(proposal_text) > 8000:
+            raise SwitchboardError("INVALID_SCHEMA", "proposal_text required (max 8000 chars)")
+        version = s["version"] + 1
+        self.store.execute(
+            "UPDATE steering_sessions SET proposal_text=?,version=?,updated_at=? WHERE id=?",
+            (proposal_text, version, now_iso(), session_id))
+        self.store.execute(
+            "INSERT INTO steering_revisions(id,session_id,version,proposal_text,note,created_at)"
+            " VALUES(?,?,?,?,?,?)", (new_id(), session_id, version, proposal_text,
+                                    str(note)[:300] if note else None, now_iso()))
+        self.store.emit("agent", agent["id"], "steering.proposal_revised", "steering_session",
+                        session_id, {"version": version})
+        return self.steering_session(session_id)
+
+    def resolve_steering(self, session_id, outcome, actor="local_user") -> dict:
+        """The deliberate close: accept or reject. Deliberately separate from steer()."""
+        if outcome not in ("accepted", "rejected"):
+            raise SwitchboardError("INVALID_SCHEMA", "outcome must be accepted|rejected")
+        s = self.store.query_one("SELECT * FROM steering_sessions WHERE id=?", (session_id,))
+        if not s:
+            raise SwitchboardError("NOT_FOUND", "steering session")
+        if s["status"] != "open":
+            raise SwitchboardError("CONFLICT", "session is closed")
+        self.store.execute("UPDATE steering_sessions SET status=?,updated_at=? WHERE id=?",
+                           (outcome, now_iso(), session_id))
+        self.store.emit("human", actor, f"steering.{outcome}", "steering_session", session_id,
+                        {"version": s["version"]}, evidence_class="human_confirmed")
+        return self.steering_session(session_id)
+
+    def pending_steer(self, agent, session_id) -> dict:
+        """What the agent polls: the latest unconsumed steer, or acceptance."""
+        s = self.steering_session(session_id, agent=agent)
+        if s["status"] in ("accepted", "rejected"):
+            return {"status": s["status"], "instruction": None, "session": s}
+        return {"status": s["status"], "instruction": s["pending_steer"], "session": s}
+
+    def taste_profile(self, category=None) -> list:
+        """Which way this human leans, per category — from steering alone.
+
+        Descriptive only: counts of human steers by direction label. It is a
+        mirror for the Passport, never a rule and never gold evidence.
+        """
+        sql = ("SELECT ss.category, e.payload_json FROM events e"
+               " JOIN steering_sessions ss ON ss.id=e.object_id"
+               " WHERE e.event_type='steering.applied'")
+        params = ()
+        if category:
+            sql += " AND ss.category=?"
+            params = (category,)
+        counts: dict = {}
+        for r in self.store.query(sql, params):
+            try:
+                label = json.loads(r["payload_json"] or "{}").get("label", "?")
+            except ValueError:
+                label = "?"
+            counts.setdefault(r["category"], {}).setdefault(label, 0)
+            counts[r["category"]][label] += 1
+        return [{"category": c, "leans": [[k, n] for k, n in sorted(v.items(), key=lambda kv: -kv[1])]}
+                for c, v in sorted(counts.items())]
 
     # ---------- sandbox action review ----------
     def request_action_review(self, agent, action: dict, expires_at=None):

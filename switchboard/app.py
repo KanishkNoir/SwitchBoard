@@ -131,7 +131,78 @@ def record_use(body: dict, x_agent_key: str | None = Header(default=None)):
         return JSONResponse(status_code=400, content={"error": "INVALID_SCHEMA"})
 
 
+# ---- steering (agent-facing) ----
+@app.post("/api/steering/submit")
+def steering_submit(body: dict, x_agent_key: str | None = Header(default=None)):
+    agent = agent_from(x_agent_key)
+    try:
+        return svc.submit_proposal(agent, body.get("title"), body.get("proposal_text"),
+                                   body.get("category"), body.get("directions"))
+    except SwitchboardError as e:
+        return err(e)
+
+
+@app.post("/api/steering/revise")
+def steering_revise(body: dict, x_agent_key: str | None = Header(default=None)):
+    agent = agent_from(x_agent_key)
+    try:
+        out = svc.revise_proposal(agent, body["session_id"], body.get("proposal_text"),
+                                  body.get("note"))
+        _notify("steering")
+        return out
+    except SwitchboardError as e:
+        return err(e)
+    except KeyError:
+        return JSONResponse(status_code=400, content={"error": "INVALID_SCHEMA"})
+
+
+@app.get("/api/steering/pending/{session_id}")
+def steering_pending(session_id: str, x_agent_key: str | None = Header(default=None)):
+    agent = agent_from(x_agent_key)
+    try:
+        return svc.pending_steer(agent, session_id)
+    except SwitchboardError as e:
+        return err(e)
+
+
 # ---- human (local PWA) routes ----
+@app.get("/steering")
+def steering_list():
+    return svc.list_steering()
+
+
+@app.get("/steering/{session_id}")
+def steering_get(session_id: str):
+    try:
+        return svc.steering_session(session_id)
+    except SwitchboardError as e:
+        return err(e)
+
+
+@app.post("/steering/{session_id}/steer")
+def steering_steer(session_id: str, body: dict):
+    try:
+        out = svc.steer(session_id, body.get("edge"), body.get("magnitude", 1))
+        _demo_revise_if_demo(session_id, body.get("edge"))
+        _notify("steering")
+        return out
+    except SwitchboardError as e:
+        return err(e)
+
+
+@app.post("/steering/{session_id}/resolve")
+def steering_resolve(session_id: str, body: dict):
+    try:
+        out = svc.resolve_steering(session_id, body.get("outcome"))
+        _notify("steering")
+        return out
+    except SwitchboardError as e:
+        return err(e)
+
+
+@app.get("/taste")
+def taste():
+    return svc.taste_profile()
 @app.get("/inbox")
 def inbox():
     return svc.inbox()
@@ -312,6 +383,60 @@ def evaluation_replay(body: dict | None = None):
     from .evaluation import run_comparison
     cases = (body or {}).get("cases")
     return run_comparison(cases)
+
+
+DEMO_STEER_DIRECTIONS = [
+    {"edge": "left", "label": "Cheaper", "expected_effect": "Rank lower-cost options first"},
+    {"edge": "right", "label": "More comfort", "expected_effect": "Rank higher-comfort options first"},
+    {"edge": "top", "label": "Explore", "expected_effect": "Surface less obvious options"},
+    {"edge": "bottom", "label": "Simplify", "expected_effect": "Prefer the simplest option"},
+]
+DEMO_LAPTOPS = [
+    ("Eco Air 14", 899, "comfort 6/10, simplest to own"),
+    ("Framework 13", 1599, "comfort 9/10, repairable"),
+    ("Titan 16", 2499, "comfort 8/10, most powerful and novel"),
+]
+
+
+def _demo_agent():
+    row = svc.store.query_one("SELECT * FROM agents WHERE name='switchboard_demo'")
+    if row:
+        return row
+    reg = svc.register_agent("switchboard_demo", kind="demo")
+    return svc.store.query_one("SELECT * FROM agents WHERE id=?", (reg["agent_id"],))
+
+
+@app.post("/demo/steering-proposal")
+def demo_steering_proposal():
+    """One-click live loop: a demo agent submits a real steerable proposal."""
+    agent = _demo_agent()
+    text = "Three laptops, first pass:\n" + "\n".join(
+        f"· {n} — ${p} ({d})" for n, p, d in DEMO_LAPTOPS)
+    try:
+        return svc.submit_proposal(agent, "Which laptop should we pick?", text,
+                                   "purchase", DEMO_STEER_DIRECTIONS)
+    except SwitchboardError as e:
+        return err(e)
+
+
+_DEMO_RANK = {"Cheaper": [0, 1, 2], "More comfort": [1, 2, 0],
+              "Explore": [2, 1, 0], "Simplify": [0, 1, 2]}
+
+
+def _demo_revise_if_demo(session_id, edge):
+    """The demo agent answers a steer immediately, on the real rails."""
+    s = svc.store.query_one("SELECT * FROM steering_sessions WHERE id=?", (session_id,))
+    if not s:
+        return
+    agent = svc.store.query_one("SELECT * FROM agents WHERE id=?", (s["agent_id"],))
+    if not agent or agent["name"] != "switchboard_demo":
+        return
+    label = next((d["label"] for d in DEMO_STEER_DIRECTIONS if d["edge"] == edge), "Cheaper")
+    order = _DEMO_RANK.get(label, [0, 1, 2])
+    text = f"Revised after your steer ({label.lower()} first):\n" + "\n".join(
+        f"{i + 1}. {DEMO_LAPTOPS[j][0]} — ${DEMO_LAPTOPS[j][1]} ({DEMO_LAPTOPS[j][2]})"
+        for i, j in enumerate(order))
+    svc.revise_proposal(agent, session_id, text, note=f"demo agent re-ranked: {label}")
 
 
 @app.post("/demo/tradeoff")

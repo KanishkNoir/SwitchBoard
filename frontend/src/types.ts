@@ -70,6 +70,7 @@ export interface Passport {
   preference_epoch: string;
   evidence_state: string;
   gold_sample_count: number;
+  taste?: [string, number][];
   risk_gate?: {
     gate_state: string;
     would_block: boolean;
@@ -194,6 +195,28 @@ export interface AttentionHealth {
   median_dwell_ms: number | null;
   risk: "ok" | "watch" | "elevated" | "unknown";
   signals: string[];
+}
+
+export interface SteerDirection {
+  edge: Edge;
+  label: string;
+  expected_effect: string;
+}
+
+export interface SteeringSession {
+  id: string;
+  agent: { id: string; name: string; kind: string } | null;
+  category: string;
+  title: string;
+  proposal_text: string;
+  directions: SteerDirection[];
+  version: number;
+  status: "open" | "accepted" | "rejected";
+  pending_steer: { edge: string; label: string } | null;
+  revisions: { version: number; proposal_text: string; note: string | null; created_at: string }[];
+  trajectory: { event: string; actor: string; at: string; label?: string; edge?: string; version?: number }[];
+  created_at: string;
+  updated_at: string;
 }
 
 export interface SteerResult {
