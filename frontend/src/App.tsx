@@ -3,7 +3,7 @@ import { api } from "./api";
 import DecisionStage from "./components/DecisionStage";
 import EvaluationPanel from "./components/Evaluation";
 import { AgentsPanel, RulesPanel } from "./components/Manage";
-import { DebriefPanel, InboxPanel, ObjectsPanel, PassportPanel } from "./components/Panels";
+import { AttentionAlerts, DebriefPanel, InboxPanel, ObjectsPanel, PassportPanel } from "./components/Panels";
 import { OnboardingWizard } from "./components/Onboarding";
 import SteeringPanel from "./components/Steering";
 import type { OnboardingState } from "./types";
@@ -28,6 +28,7 @@ export default function App() {
   const [onboarding, setOnboarding] = useState<OnboardingState | null>(null);
   const [wizardDismissed, setWizardDismissed] = useState(false);
   const [showDemo, setShowDemo] = useState(false);
+  const [steeringCount, setSteeringCount] = useState(0);
 
   useEffect(() => {
     api.onboarding().then(setOnboarding).catch(() => setOnboarding(null));
@@ -186,8 +187,11 @@ export default function App() {
         <span className="tag">Your agents learn when to ask.</span>
         <div className="status">
           <span>
-            <span className="dot" />
-            {health}
+            <span
+              className="dot"
+              style={{ background: health === "Connected" ? "var(--green)" : "var(--red, #d70015)" }}
+            />
+            {health === "Connected" ? "Ready" : "Can't reach your hub — answers will wait"}
           </span>
           <span className="tier">
             {t3 ? "Reasoning: on" : "Reasoning: off — questions will wait for you"}
@@ -202,7 +206,7 @@ export default function App() {
             style={{ transform: `translateX(${segInk.x - 2}px)`, width: segInk.w }}
           />
           <button className={view === "decision" ? "tab active" : "tab"} onClick={() => setView("decision")}>
-            Decide
+            Decide{inbox.length + steeringCount > 0 ? ` · ${inbox.length + steeringCount}` : ""}
           </button>
           <button className={view === "debrief" ? "tab active" : "tab"} onClick={() => setView("debrief")}>
             Debrief
@@ -210,15 +214,16 @@ export default function App() {
           <button className={view === "manage" ? "tab active" : "tab"} onClick={() => setView("manage")}>
             Agents &amp; rules
           </button>
-          <button
-            className={view === "evaluation" ? "tab active" : "tab"}
-            onClick={() => setView("evaluation")}
-          >
-            Evaluation
-          </button>
         </div>
         {notice && <span className="notice">{notice}</span>}
       </nav>
+      {view === "decision" && (inbox.length > 0 || steeringCount > 0) && (
+        <div className="status-strip">
+          {inbox.length > 0 && <span>{inbox.length} waiting on you</span>}
+          {steeringCount > 0 && <span>{steeringCount} proposal{steeringCount > 1 ? "s" : ""} to steer</span>}
+          {inbox.length === 0 && steeringCount > 0 && <span>nothing blocking — steer when ready</span>}
+        </div>
+      )}
 
       {onboarding && !onboarding.completed && !wizardDismissed ? (
         <main className="view-morph" style={{ gridTemplateColumns: "minmax(0, 640px)", justifyContent: "center" }}>
@@ -226,7 +231,14 @@ export default function App() {
         </main>
       ) : view === "debrief" ? (
         <main className="view-morph" style={{ gridTemplateColumns: "1fr" }}>
-          <DebriefPanel />
+          <div>
+            <DebriefPanel />
+            <div className="taprow" style={{ marginTop: 12 }}>
+              <button className="linkbtn" onClick={() => setView("evaluation")}>
+                Proof — evaluation &amp; replay evidence →
+              </button>
+            </div>
+          </div>
         </main>
       ) : view === "evaluation" ? (
         <main className="view-morph" style={{ gridTemplateColumns: "1fr" }}>
@@ -237,53 +249,54 @@ export default function App() {
       ) : view === "manage" ? (
         <main className="manage-grid view-morph">
           <section>
+            <AttentionAlerts />
             <RulesPanel />
           </section>
           <aside>
             <AgentsPanel />
-            <PassportPanel />
           </aside>
         </main>
       ) : (
       <>
       <main className="view-morph">
         <section>
-          <SteeringPanel
-            onEvent={(m) => {
-              setNotice(m);
-              setTimeout(() => setNotice(""), 6000);
-            }}
-          />
-          <InboxPanel
-            items={inbox}
-            onRefresh={loadInbox}
-            onAnswered={(m) => {
-              setNotice(m);
-              setTimeout(() => setNotice(""), 6000);
-            }}
-          />
+          {/* Order by blocking-ness: questions that wait on you outrank
+              proposals you may steer whenever you like. */}
+          {inbox.length > 0 ? (
+            <>
+              <InboxPanel
+                items={inbox}
+                onRefresh={loadInbox}
+                onAnswered={(m) => {
+                  setNotice(m);
+                  setTimeout(() => setNotice(""), 6000);
+                }}
+              />
+              <SteeringPanel onCount={setSteeringCount} />
+            </>
+          ) : (
+            <>
+              <SteeringPanel
+                onCount={setSteeringCount}
+                onEvent={(m) => {
+                  setNotice(m);
+                  setTimeout(() => setNotice(""), 6000);
+                }}
+              />
+              <InboxPanel
+                items={inbox}
+                onRefresh={loadInbox}
+                onAnswered={(m) => {
+                  setNotice(m);
+                  setTimeout(() => setNotice(""), 6000);
+                }}
+              />
+            </>
+          )}
         </section>
 
         <aside>
           <PassportPanel />
-          <div className="panel">
-            <div className="panel-head">
-              <h2>How to read this</h2>
-            </div>
-            <div className="prose">
-              <p>
-                These cards are the product: a question from one of your agents, answered
-                in one tap — Allow once, Deny, or Always to teach a standing rule with a
-                limit you set. Swipe works on the safe ones; locked ones always need a
-                deliberate tap.
-              </p>
-              <p>
-                A category moves shadow → suggest → warn → auto only on evidence you
-                confirmed, and drops back the moment a correction or a failed canary
-                says it should.
-              </p>
-            </div>
-          </div>
         </aside>
       </main>
 

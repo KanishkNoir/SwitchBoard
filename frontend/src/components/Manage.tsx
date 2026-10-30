@@ -106,22 +106,28 @@ export function RulesPanel() {
     load();
   }, [load]);
 
-  const scope = () =>
-    scopeKey.trim() ? { mandatory: { [scopeKey.trim()]: scopeVal.trim() } } : {};
-
   const create = async () => {
     const kw = keywords.split(",").map((k) => k.trim()).filter(Boolean);
     if (!kw.length || !answer.trim()) {
       setMsg("Keywords and an answer are required.");
       return;
     }
-    await api.createRule({
-      category: cat.trim() || "purchase",
-      predicate: { keywords: kw },
-      answer: { value: answer.trim() },
-      scope: scope(),
-    });
-    setMsg(`Rule created in ${cat}. It applies only inside its scope.`);
+    if (!scopeKey.trim() || !scopeVal.trim()) {
+      setMsg("A standing rule needs a limit — fill in both scope boxes so it can't apply everywhere. Unscoped rules are not created here.");
+      return;
+    }
+    try {
+      await api.createRule({
+        category: cat.trim() || "purchase",
+        predicate: { keywords: kw },
+        answer: { value: answer.trim() },
+        scope: { mandatory: { [scopeKey.trim()]: scopeVal.trim() } },
+      });
+    } catch {
+      setMsg("Switchboard refused that rule (locked or unscoped categories can't get one). Nothing was saved.");
+      return;
+    }
+    setMsg(`Rule created in ${cat} — it starts as a suggestion. Switchboard keeps asking until this category earns more trust. Scope: only when ${scopeKey.trim()} = ${scopeVal.trim()}.`);
     setKeywords("");
     setAnswer("");
     load();
@@ -157,7 +163,7 @@ export function RulesPanel() {
         <button onClick={load}>Refresh</button>
       </div>
       {rules.length === 0 && (
-        <div className="empty">No rules yet. Create one below, or answer an inbox question and choose “remember”.</div>
+        <div className="empty">No rules yet. Create one below, or answer an inbox question and choose “Always…”.</div>
       )}
       {rules.map((r) => {
         const pred = JSON.parse(r.predicate_json) as { keywords?: string[] };
@@ -236,15 +242,19 @@ export function RulesPanel() {
       )}
 
       <h2 style={{ marginTop: 18 }}>New rule</h2>
+      <p className="prose" style={{ marginBottom: 8 }}>
+        A new rule starts as a suggestion: Switchboard keeps asking until this
+        category earns more trust. It only ever applies inside the limit you set.
+      </p>
       <div style={{ display: "grid", gap: 8 }}>
         <input value={cat} onChange={(e) => setCat(e.target.value)} placeholder="category" />
         <input value={keywords} onChange={(e) => setKeywords(e.target.value)} placeholder="keywords, comma separated (e.g. deploy, target)" />
         <input value={answer} onChange={(e) => setAnswer(e.target.value)} placeholder="answer value" />
         <div style={{ display: "flex", gap: 8 }}>
-          <input value={scopeKey} onChange={(e) => setScopeKey(e.target.value)} placeholder="scope field (optional, e.g. env)" style={{ flex: 1 }} />
+          <input value={scopeKey} onChange={(e) => setScopeKey(e.target.value)} placeholder="scope field (required, e.g. env)" style={{ flex: 1 }} />
           <input value={scopeVal} onChange={(e) => setScopeVal(e.target.value)} placeholder="scope value (e.g. staging)" style={{ flex: 1 }} />
         </div>
-        <button className="primary" onClick={create}>Create human-confirmed rule</button>
+        <button className="primary" onClick={create}>Create rule (starts as suggestion)</button>
       </div>
       {msg && <div className="note">{msg}</div>}
     </div>

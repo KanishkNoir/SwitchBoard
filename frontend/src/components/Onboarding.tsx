@@ -3,9 +3,9 @@ import { api } from "../api";
 import type { OnboardingState } from "../types";
 
 const RISKS = [
-  { key: "careful", label: "Careful", desc: "Target: at most 1 in 100 auto-answers wrong." },
-  { key: "balanced", label: "Balanced", desc: "Target: at most 2 in 100. A sensible start." },
-  { key: "relaxed", label: "Relaxed", desc: "Target: at most 5 in 100. Fewer interruptions, more trust." },
+  { key: "careful", label: "Careful", desc: "Aim: at most 1 in 100 auto-answers wrong — measured, not promised." },
+  { key: "balanced", label: "Balanced", desc: "Aim: at most 2 in 100. A sensible start." },
+  { key: "relaxed", label: "Relaxed", desc: "Aim: at most 5 in 100. Fewer interruptions, more trust." },
 ] as const;
 
 export function OnboardingWizard({ state, onDone }: { state: OnboardingState; onDone: () => void }) {
@@ -82,7 +82,7 @@ export function OnboardingWizard({ state, onDone }: { state: OnboardingState; on
           <p className="prose">
             Pick an error budget for answers Switchboard may one day give on its own.
             It's a target the risk gate measures against — never a guarantee — and you
-            can change it anytime in Agents &amp; rules.
+            you choose it here, during setup.
           </p>
           <div style={{ display: "grid", gap: 8 }}>
             {RISKS.map((r) => (
@@ -105,7 +105,7 @@ export function OnboardingWizard({ state, onDone }: { state: OnboardingState; on
         ) : (
           <button className="primary" onClick={() => finish(false)}>Start using Switchboard</button>
         )}
-        <button className="linkbtn" onClick={() => finish(true)}>Skip setup</button>
+        <button className="linkbtn" onClick={() => finish(true)}>Skip — use safe defaults (Balanced, ask-me)</button>
       </div>
     </div>
   );

@@ -1087,7 +1087,8 @@ class SwitchboardService:
                 break
             if t["event"] in ("steering.proposal_revised", "steering.accepted", "steering.rejected"):
                 break
-        return {"id": s["id"], "agent": agent_row, "category": s["category"], "title": s["title"],
+        return {"id": s["id"], "agent": agent_row, "category": s["category"],
+                "locked": bool(self.category(s["category"])["locked"]), "title": s["title"],
                 "proposal_text": s["proposal_text"], "directions": json.loads(s["directions_json"]),
                 "version": s["version"], "status": s["status"],
                 "pending_steer": pending, "revisions": revisions, "trajectory": trajectory,

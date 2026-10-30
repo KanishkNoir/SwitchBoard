@@ -2,11 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import type { AttentionHealth, DriftRow, GroundedObject, InboxItem, NoticeItem, Passport } from "../types";
 
-const CAT_COLORS = ["#0071e3", "#1db954", "#ff7a1a", "#ff3d71", "#7d4aff", "#0aa2c0"];
-export function catColor(name: string): string {
-  let h = 0;
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
-  return CAT_COLORS[h % CAT_COLORS.length];
+// Categories are neutral text now. The colour spectrum belongs only to the
+// four steering directions; a category must never borrow a reassuring hue.
+export function catColor(_name: string): string {
+  return "var(--dim)";
 }
 
 export function ObjectsPanel({
@@ -78,35 +77,22 @@ export function InboxPanel({
       setDetail(null);
     }
   };
-  const [answer, setAnswer] = useState("");
-  const [keywords, setKeywords] = useState("");
-  const [scopeKey, setScopeKey] = useState("");
-  const [scopeVal, setScopeVal] = useState("");
+  // Rule/answer form state is per item — typed on one card, invisible on others.
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [keywordsMap, setKeywordsMap] = useState<Record<string, string>>({});
+  const [scopeMap, setScopeMap] = useState<Record<string, { key: string; val: string }>>({});
+  const answer = (id: string) => answers[id] ?? "";
+  const keywords = (id: string) => keywordsMap[id] ?? "";
+  const scopeOf = (id: string) => scopeMap[id] ?? { key: "", val: "" };
   const [swipe, setSwipe] = useState<{ id: string; dx: number }>({ id: "", dx: 0 });
   const touchX = useRef<number | null>(null);
   const touchY = useRef<number | null>(null);
-  const [health, setHealth] = useState<AttentionHealth | null>(null);
-  const [drift, setDrift] = useState<DriftRow[]>([]);
-  const [notices, setNotices] = useState<NoticeItem[]>([]);
   const seenAt = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
     const now = Date.now();
     for (const i of items) if (!seenAt.current.has(i.id)) seenAt.current.set(i.id, now);
-    api.attentionHealth().then(setHealth).catch(() => setHealth(null));
-    api.drift().then(setDrift).catch(() => setDrift([]));
-    api.notices().then(setNotices).catch(() => setNotices([]));
   }, [items]);
-
-  const veto = async (n: NoticeItem) => {
-    await api.vetoNotice(n.id);
-    onAnswered?.("Veto recorded — that counts against the rule that answered.");
-    onRefresh();
-  };
-  const dismiss = async (n: NoticeItem) => {
-    await api.dismissNotice(n.id);
-    onRefresh();
-  };
 
   const dwell = (item: InboxItem) =>
     seenAt.current.has(item.id) ? Date.now() - seenAt.current.get(item.id)! : null;
@@ -132,17 +118,18 @@ export function InboxPanel({
   };
 
   const createRule = async (item: InboxItem) => {
-    if (!scopeKey.trim() || !scopeVal.trim()) {
-      onAnswered?.("A standing rule needs a limit — fill in both scope boxes so it can't apply everywhere.");
+    const sc = scopeOf(item.id);
+    if (!sc.key.trim() || !sc.val.trim()) {
+      onAnswered?.("A standing rule needs a limit — tap a limit chip or fill in both scope boxes so it can't apply everywhere.");
       return;
     }
-    const kw = keywords.split(",").map((k) => k.trim()).filter(Boolean);
+    const kw = keywords(item.id).split(",").map((k) => k.trim()).filter(Boolean);
     try {
       const out = await api.answerInbox(item.id, {
         answer: { value: "allow" },
         save_rule: {
           keywords: kw.length ? kw : derivedKeywords(item),
-          scope: { mandatory: { [scopeKey.trim()]: scopeVal.trim() } },
+          scope: { mandatory: { [sc.key.trim()]: sc.val.trim() } },
         },
         dwell_ms: dwell(item),
         origin: "rule_sheet",
@@ -157,31 +144,31 @@ export function InboxPanel({
     onRefresh();
   };
 
+  // A written answer is answer-once, always. Rules are made only in the rule
+  // sheet above — never as a side effect of typing an answer.
   const submitCustom = async (item: InboxItem) => {
-    if (!answer.trim()) return;
-    const kw = keywords.split(",").map((k) => k.trim()).filter(Boolean);
-    const scoped = Boolean(scopeKey.trim() && scopeVal.trim());
-    const save_rule = scoped
-      ? {
-          keywords: kw.length ? kw : derivedKeywords(item),
-          scope: { mandatory: { [scopeKey.trim()]: scopeVal.trim() } },
-        }
-      : null;
-    const out = await api.answerInbox(item.id, {
-      answer: { value: answer.trim() },
-      save_rule,
+    const text = answer(item.id).trim();
+    if (!text) return;
+    await api.answerInbox(item.id, {
+      answer: { value: text },
+      save_rule: null,
       dwell_ms: dwell(item),
-      origin: scoped ? "rule_sheet" : "tap",
+      origin: "tap",
     });
-    onAnswered?.(
-      scoped
-        ? `Answered and rule ${out.rule?.action ?? "saved"}.`
-        : "Answered once. Add a scope limit to make it a standing rule."
-    );
+    onAnswered?.("Answered once. Use Always… if you want this to become a standing rule.");
     setCustomOpen(null);
-    setAnswer("");
-    setKeywords("");
+    setAnswers((m) => ({ ...m, [item.id]: "" }));
     onRefresh();
+  };
+
+  // Tappable limits derived from the question itself — no developer vocabulary.
+  const scopeChips = (item: InboxItem): { key: string; val: string; label: string }[] => {
+    const chips: { key: string; val: string; label: string }[] = [];
+    if (item.agent_name) chips.push({ key: "agent", val: item.agent_name, label: `Only from ${item.agent_name}` });
+    chips.push({ key: "category", val: item.category, label: `Only ${item.category}` });
+    const amount = item.question_text.match(/\$([\d,]+)/);
+    if (amount) chips.push({ key: "max_amount", val: amount[1].replace(/,/g, ""), label: `Only under $${amount[1]}` });
+    return chips;
   };
 
   const itemOptions = (item: InboxItem): { id: string; label: string }[] => {
@@ -204,33 +191,6 @@ export function InboxPanel({
         <h2>Waiting on you</h2>
         <button onClick={onRefresh}>Refresh</button>
       </div>
-      {notices.map((n) => (
-        <div className="item" key={n.id}>
-          <span className="cat" style={{ color: catColor(n.category) }}>{n.category}</span>
-          <span className="pri">auto-answered · warning stage</span>
-          <div className="qtext">{n.question_text}</div>
-          <div className="bb">Switchboard already answered this. Only act if it got it wrong.</div>
-          <div className="taprow">
-            <button className="primary" onClick={() => dismiss(n)}>Looks fine</button>
-            <button onClick={() => veto(n)}>Veto</button>
-          </div>
-        </div>
-      ))}
-      {drift.some((d) => d.status === "drift_suspected") && (
-        <div className="callout">
-          Silent drift suspected: a standing rule's recent outcomes turned negative, so
-          Switchboard paused it (recalibration hold) instead of letting it keep answering
-          from a world that may have changed. Review it under Rules, then answer a few
-          fresh questions to release the hold.
-        </div>
-      )}
-      {health && health.risk !== "ok" && health.risk !== "unknown" && (
-        <div className="callout">
-          {health.risk === "elevated" ? "Rubber-stamp risk: " : "Worth a look: "}
-          you may be approving without reading ({health.signals.join("; ")}). Slow down on
-          costly or irreversible questions — Switchboard never blocks you, it just flags the pattern.
-        </div>
-      )}
       {items.length === 0 ? (
         <div className="empty">
           All clear. When an agent needs you, its question lands here — one tap and
@@ -287,7 +247,9 @@ export function InboxPanel({
               <div className="qtext">{i.question_text}</div>
               {i.batch_id && <div className="bb">Same decision asked more than once — one answer covers all of them.</div>}
               {i.is_locked && (
-                <div className="bb">Locked class — this always needs a deliberate answer. Swipe is off.</div>
+                <div style={{ margin: "6px 0" }}>
+                  <span className="locked-pill" style={{ marginLeft: 0 }}>Locked · deliberate tap only</span>
+                </div>
               )}
               {opts.length > 0 ? (
                 <div className="taprow">
@@ -316,10 +278,17 @@ export function InboxPanel({
                     the limit you set. It starts as a suggestion: Switchboard keeps
                     asking until this category earns more trust.
                   </p>
-                  <input value={keywords} onChange={(e) => setKeywords(e.target.value)} placeholder={`Rule words (blank = ${derivedKeywords(i).join(", ")})`} />
+                  <input value={keywords(i.id)} onChange={(e) => setKeywordsMap((m) => ({ ...m, [i.id]: e.target.value }))} placeholder={`Rule words (blank = ${derivedKeywords(i).join(", ")})`} />
+                  <div className="taprow">
+                    {scopeChips(i).map((c) => (
+                      <button key={c.label} className="chip" onClick={() => setScopeMap((m) => ({ ...m, [i.id]: { key: c.key, val: c.val } }))}>
+                        {c.label}
+                      </button>
+                    ))}
+                  </div>
                   <div style={{ display: "flex", gap: 8 }}>
-                    <input value={scopeKey} onChange={(e) => setScopeKey(e.target.value)} placeholder="Only when… field (e.g. env)" style={{ flex: 1 }} />
-                    <input value={scopeVal} onChange={(e) => setScopeVal(e.target.value)} placeholder="…equals (e.g. staging)" style={{ flex: 1 }} />
+                    <input value={scopeOf(i.id).key} onChange={(e) => setScopeMap((m) => ({ ...m, [i.id]: { key: e.target.value, val: scopeOf(i.id).val } }))} placeholder="Only when… field" style={{ flex: 1 }} />
+                    <input value={scopeOf(i.id).val} onChange={(e) => setScopeMap((m) => ({ ...m, [i.id]: { key: scopeOf(i.id).key, val: e.target.value } }))} placeholder="…equals" style={{ flex: 1 }} />
                   </div>
                   <div className="taprow">
                     <button className="primary" onClick={() => createRule(i)}>Create rule & allow</button>
@@ -361,12 +330,7 @@ export function InboxPanel({
               )}
               {customOpen === i.id && (
                 <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
-                  <input value={answer} onChange={(e) => setAnswer(e.target.value)} placeholder="Your answer (also saves a rule)" />
-                  <input value={keywords} onChange={(e) => setKeywords(e.target.value)} placeholder="Rule words (optional)" />
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <input value={scopeKey} onChange={(e) => setScopeKey(e.target.value)} placeholder="Only when… field (optional)" style={{ flex: 1 }} />
-                    <input value={scopeVal} onChange={(e) => setScopeVal(e.target.value)} placeholder="…equals (optional)" style={{ flex: 1 }} />
-                  </div>
+                  <input value={answer(i.id)} onChange={(e) => setAnswers((m) => ({ ...m, [i.id]: e.target.value }))} placeholder="Your answer (once only — no rule is saved)" />
                   <button className="primary" onClick={() => submitCustom(i)}>Send answer</button>
                 </div>
               )}
@@ -383,8 +347,72 @@ export function InboxPanel({
   );
 }
 
+/** Auto-answered notices live in Debrief now — the inbox is questions only. */
+export function NoticesPanel({ onAnswered }: { onAnswered?: (msg: string) => void }) {
+  const [notices, setNotices] = useState<NoticeItem[]>([]);
+  const load = useCallback(async () => {
+    try {
+      setNotices(await api.notices());
+    } catch {
+      setNotices([]);
+    }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+  if (notices.length === 0) return null;
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div className="cat" style={{ color: "var(--c-blue)", fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em" }}>
+        Switchboard answered — check if you disagree
+      </div>
+      {notices.map((n) => (
+        <div className="item" key={n.id}>
+          <span className="cat">{n.category}</span>
+          <span className="pri">auto-answered · warning stage</span>
+          <div className="qtext">{n.question_text}</div>
+          <div className="bb">
+            “Looks fine” counts as you confirming it. Veto flags the rule — it can't undo
+            anything the agent already did outside Switchboard.
+          </div>
+          <div className="taprow">
+            <button className="primary" onClick={async () => { await api.dismissNotice(n.id); load(); }}>Looks fine</button>
+            <button onClick={async () => { await api.vetoNotice(n.id); onAnswered?.("Veto recorded — that counts against the rule that answered."); load(); }}>Veto</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Drift + rubber-stamp alerts belong with the rules they describe. */
+export function AttentionAlerts() {
+  const [health, setHealth] = useState<AttentionHealth | null>(null);
+  const [drift, setDrift] = useState<DriftRow[]>([]);
+  useEffect(() => {
+    api.attentionHealth().then(setHealth).catch(() => setHealth(null));
+    api.drift().then(setDrift).catch(() => setDrift([]));
+  }, []);
+  return (
+    <>
+      {drift.some((d) => d.status === "drift_suspected") && (
+        <div className="callout">
+          Silent drift suspected: a standing rule's recent outcomes turned negative, so
+          Switchboard paused it (recalibration hold) instead of letting it keep answering
+          from a world that may have changed. Review it under Rules, then answer a few
+          fresh questions to release the hold.
+        </div>
+      )}
+      {health && health.risk !== "ok" && health.risk !== "unknown" && (
+        <div className="callout">
+          {health.risk === "elevated" ? "Rubber-stamp risk: " : "Worth a look: "}
+          you may be approving without reading ({health.signals.join("; ")}). Slow down on
+          costly or irreversible questions — Switchboard never blocks you, it just flags the pattern.
+        </div>
+      )}
+    </>
+  );
+}
+
 const BUCKETS: { key: string; title: string; color: string }[] = [
-  { key: "still_waiting", title: "Still waiting on you", color: "var(--c-orange)" },
   { key: "answered_by_you", title: "You answered", color: "var(--c-green)" },
   { key: "auto_answered", title: "Switchboard answered", color: "var(--c-blue)" },
   { key: "denied_by_you", title: "You denied", color: "var(--c-pink)" },
@@ -416,6 +444,7 @@ export function DebriefPanel() {
         What happened, in the order it mattered — and why. Every entry carries its
         receipt; nothing here is rewritten after the fact.
       </p>
+      <NoticesPanel />
       {rows.length === 0 && <div className="empty">No decisions yet. Your agents' questions will be explained here.</div>}
       {BUCKETS.map((b) => {
         const group = rows.filter((r) => r.bucket === b.key);
@@ -454,32 +483,45 @@ export function DebriefPanel() {
 
 export function PassportPanel() {
   const [category, setCategory] = useState("purchase");
+  const [chips, setChips] = useState<string[]>(["purchase"]);
   const [passport, setPassport] = useState<Passport | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const load = async () => {
+  const load = useCallback(async (cat?: string) => {
     try {
-      setPassport(await api.passport(category.trim() || "purchase"));
+      setPassport(await api.passport((cat ?? category).trim() || "purchase"));
       setError(null);
     } catch {
       setError("Passport unavailable.");
     }
-  };
+  }, [category]);
+
+  // One auto-loaded home: the passport opens on the default category and
+  // offers real categories as chips — nobody types a category name.
+  useEffect(() => {
+    load("purchase");
+    api.onboarding().then((s) => {
+      const cats = s.categories.map((c) => c.category);
+      if (cats.length) setChips(cats);
+    }).catch(() => { /* keep the default chip */ });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="panel">
       <div className="panel-head">
         <h2>Autonomy passport</h2>
       </div>
-      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-        <input
-          value={category}
-          onChange={(e) => setCategory(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && load()}
-          style={{ flex: 1 }}
-          aria-label="Category"
-        />
-        <button onClick={load}>Inspect</button>
+      <div className="taprow" style={{ marginBottom: 12 }}>
+        {chips.map((c) => (
+          <button
+            key={c}
+            className={c === category ? "chip active" : "chip"}
+            onClick={() => { setCategory(c); load(c); }}
+          >
+            {c}
+          </button>
+        ))}
       </div>
       {error && <div className="empty">{error}</div>}
       {!passport && !error && (

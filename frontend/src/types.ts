@@ -207,6 +207,7 @@ export interface SteeringSession {
   id: string;
   agent: { id: string; name: string; kind: string } | null;
   category: string;
+  locked?: boolean;
   title: string;
   proposal_text: string;
   directions: SteerDirection[];

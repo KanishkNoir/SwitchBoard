@@ -24,6 +24,7 @@ def test_full_loop_steer_revise_accept(svc_agent):
     svc, agent = svc_agent
     s = svc.submit_proposal(agent, "Pick a laptop", "Framework 13 at $1599.", "purchase", DIRS)
     assert s["status"] == "open" and s["version"] == 1
+    assert s["locked"] is False  # UI renders lock state from this flag, never a guess
 
     out = svc.steer(s["id"], "left", magnitude=5)  # clamped, recorded, NOT accepted
     assert out["instruction"]["label"] == "Cheaper"
