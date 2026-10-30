@@ -110,7 +110,7 @@ CREATE TABLE IF NOT EXISTS steering_sessions(
   id TEXT PRIMARY KEY, agent_id TEXT NOT NULL REFERENCES agents(id), category TEXT NOT NULL,
   title TEXT NOT NULL, proposal_text TEXT NOT NULL, directions_json TEXT NOT NULL,
   version INTEGER NOT NULL DEFAULT 1, status TEXT NOT NULL DEFAULT 'open',
-  created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+  project TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS steering_revisions(
   id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES steering_sessions(id),
   version INTEGER NOT NULL, proposal_text TEXT NOT NULL, note TEXT,
@@ -129,6 +129,10 @@ class Store:
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(SCHEMA)
+        # Additive migrations for ledgers created before a column existed.
+        cols = {r[1] for r in self.conn.execute("PRAGMA table_info(steering_sessions)")}
+        if cols and "project" not in cols:
+            self.conn.execute("ALTER TABLE steering_sessions ADD COLUMN project TEXT")
         self.conn.commit()
 
     def close(self):

@@ -42,6 +42,22 @@ def test_locked_category_not_swipeable_and_swipe_rejected():
     assert out["decision_id"]
 
 
+def test_locked_category_question_still_reaches_human():
+    # Regression: locked used to defer before queueing, so the question
+    # vanished — the agent waited forever and the human never saw it.
+    # Locked means "always asks you", so it must land in the inbox.
+    svc, agent = make()
+    resp = svc.ask(agent, QuestionRequest(
+        request_id="pay1", question="May I pay the hotel $140 now?", category="payments",
+        reversibility="costly"))
+    assert resp["decision"] == "defer" and resp["reason_code"] == "locked"
+    item = svc.inbox()[-1]
+    assert item["category"] == "payments" and item["is_locked"] is True
+    assert item["swipe_eligible"] is False
+    out = svc.answer_inbox(item["id"], {"value": "deny"}, origin="tap")
+    assert out["decision_id"]
+
+
 def test_unknown_reversibility_fails_closed():
     svc, agent = make()
     item = queue(svc, agent, "r1", question="May I do a thing?", category="misc")

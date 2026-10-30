@@ -79,6 +79,14 @@ def test_direction_validation_and_agent_ownership(svc_agent):
         svc.pending_steer(other, s["id"])
 
 
+def test_project_tag_roundtrips(svc_agent):
+    svc, agent = svc_agent
+    s = svc.submit_proposal(agent, "Pick a hotel", "City Inn $110.", "purchase", DIRS,
+                            project="work-trip")
+    assert s["project"] == "work-trip"
+    assert svc.list_steering()[0]["project"] == "work-trip"
+
+
 def test_taste_profile_counts_leans(svc_agent):
     svc, agent = svc_agent
     s = svc.submit_proposal(agent, "Pick", "v1", "purchase", DIRS)

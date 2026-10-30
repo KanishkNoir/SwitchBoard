@@ -313,6 +313,19 @@ export default function App() {
               Not part of the real flow — a sandbox showing how a suggestion can be
               steered four ways (cheaper, bolder, simpler…) and how SAM 3.1 grounds a
               question in a photo. Your agents never see this.
+              <div className="taprow" style={{ marginTop: 12 }}>
+                <button
+                  className="primary"
+                  onClick={async () => {
+                    const out = await api.simulation();
+                    setNotice(`Simulation seeded: ${out.questions.length} questions, ${out.proposals.length} proposals across 3 agents.`);
+                    setTimeout(() => setNotice(""), 8000);
+                    loadInbox();
+                  }}
+                >
+                  Run multi-agent simulation (3 agents · 3 projects)
+                </button>
+              </div>
             </div>
           ) : (
             <>

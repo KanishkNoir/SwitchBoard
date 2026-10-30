@@ -49,7 +49,8 @@ def ask(request_id: str, question: str, category: str, intent_type: str = "unkno
 
 
 @mcp.tool()
-def submit_proposal(title: str, proposal_text: str, category: str, directions: list) -> dict:
+def submit_proposal(title: str, proposal_text: str, category: str, directions: list,
+                    project: str = "") -> dict:
     """Submit a steerable proposal: your draft plus 2-4 directions you can move in.
 
     Each direction: {"edge": "top|left|right|bottom", "label": "Cheaper",
@@ -59,8 +60,9 @@ def submit_proposal(title: str, proposal_text: str, category: str, directions: l
     get_steering reports accepted/rejected.
     """
     if hub() is not None:
-        return hub().submit_proposal(title, proposal_text, category, directions)
-    return svc().submit_proposal(_agent(), title, proposal_text, category, directions)
+        return hub().submit_proposal(title, proposal_text, category, directions, project or None)
+    return svc().submit_proposal(_agent(), title, proposal_text, category, directions,
+                                 project=project or None)
 
 
 @mcp.tool()

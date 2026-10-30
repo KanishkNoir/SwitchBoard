@@ -55,6 +55,7 @@ export interface InboxItem {
   requires_confirmation?: boolean;
   eligibility_reasons?: string[];
   options_json?: string | null;
+  context_json?: string | null;
   reversibility?: string;
   intent_type?: string;
   priority_score: number;
@@ -207,6 +208,7 @@ export interface SteeringSession {
   id: string;
   agent: { id: string; name: string; kind: string } | null;
   category: string;
+  project?: string | null;
   locked?: boolean;
   title: string;
   proposal_text: string;

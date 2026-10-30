@@ -276,10 +276,12 @@ class SwitchboardService:
              json.dumps(req.options), json.dumps(req.context), "received", now_iso()))
         self.store.emit("agent", agent["id"], "question.received", "question", qid,
                         {"category": req.category}, correlation_id=req.request_id)
+        # Queue first, decide second: even a locked question must reach the
+        # human — "locked" means it always asks, never that it disappears.
+        self._register_attention(qid, req, risk)
         if risk["is_locked"] or cat["locked"]:
             return self._persist_decision(qid, req, cat, mode="deferred", reason="locked",
                                           tier="none", candidate=None, human=True)
-        self._register_attention(qid, req, risk)
         # Candidate matching with hard scope validation before any stage decision.
         versions = self.active_rule_versions(req.category)
         candidate = self.ladder.resolve(normalize_text(req.question), req.category, req.intent_type, versions)
@@ -578,7 +580,7 @@ class SwitchboardService:
 
     def inbox(self):
         rows = self.store.query(
-            "SELECT ai.*, q.question_text, q.category, q.agent_id, q.options_json,"
+            "SELECT ai.*, q.question_text, q.category, q.agent_id, q.options_json, q.context_json,"
             " q.reversibility, q.intent_type, q.risk_class, a.name AS agent_name"
             " FROM attention_items ai JOIN questions q ON q.id=ai.question_id"
             " LEFT JOIN agents a ON a.id=q.agent_id WHERE ai.status='queued'"
@@ -1033,7 +1035,7 @@ class SwitchboardService:
             out.append({"edge": edge, "label": label[:80], "expected_effect": effect[:200]})
         return out
 
-    def submit_proposal(self, agent, title, proposal_text, category, directions) -> dict:
+    def submit_proposal(self, agent, title, proposal_text, category, directions, project=None) -> dict:
         title = str(title or "").strip()
         proposal_text = str(proposal_text or "").strip()
         if not title or not proposal_text or not category:
@@ -1049,8 +1051,9 @@ class SwitchboardService:
         ts = now_iso()
         self.store.execute(
             "INSERT INTO steering_sessions(id,agent_id,category,title,proposal_text,directions_json,"
-            "version,status,created_at,updated_at) VALUES(?,?,?,?,?,?,1,'open',?,?)",
-            (sid, agent["id"], category, title[:200], proposal_text, json.dumps(dirs), ts, ts))
+            "version,status,project,created_at,updated_at) VALUES(?,?,?,?,?,?,1,'open',?,?,?)",
+            (sid, agent["id"], category, title[:200], proposal_text, json.dumps(dirs),
+             str(project)[:120] if project else None, ts, ts))
         self.store.execute(
             "INSERT INTO steering_revisions(id,session_id,version,proposal_text,note,created_at)"
             " VALUES(?,?,1,?,NULL,?)", (new_id(), sid, proposal_text, ts))
@@ -1088,6 +1091,7 @@ class SwitchboardService:
             if t["event"] in ("steering.proposal_revised", "steering.accepted", "steering.rejected"):
                 break
         return {"id": s["id"], "agent": agent_row, "category": s["category"],
+                "project": s.get("project"),
                 "locked": bool(self.category(s["category"])["locked"]), "title": s["title"],
                 "proposal_text": s["proposal_text"], "directions": json.loads(s["directions_json"]),
                 "version": s["version"], "status": s["status"],

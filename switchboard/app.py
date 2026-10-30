@@ -137,7 +137,8 @@ def steering_submit(body: dict, x_agent_key: str | None = Header(default=None)):
     agent = agent_from(x_agent_key)
     try:
         return svc.submit_proposal(agent, body.get("title"), body.get("proposal_text"),
-                                   body.get("category"), body.get("directions"))
+                                   body.get("category"), body.get("directions"),
+                                   project=body.get("project"))
     except SwitchboardError as e:
         return err(e)
 
@@ -184,6 +185,7 @@ def steering_steer(session_id: str, body: dict):
     try:
         out = svc.steer(session_id, body.get("edge"), body.get("magnitude", 1))
         _demo_revise_if_demo(session_id, body.get("edge"))
+        _sim_revise_if_sim(session_id, body.get("edge"))
         _notify("steering")
         return out
     except SwitchboardError as e:
@@ -437,6 +439,100 @@ def _demo_revise_if_demo(session_id, edge):
         f"{i + 1}. {DEMO_LAPTOPS[j][0]} — ${DEMO_LAPTOPS[j][1]} ({DEMO_LAPTOPS[j][2]})"
         for i, j in enumerate(order))
     svc.revise_proposal(agent, session_id, text, note=f"demo agent re-ranked: {label}")
+
+
+def _sim_agent(name):
+    row = svc.store.query_one("SELECT * FROM agents WHERE name=?", (name,))
+    if row:
+        return row
+    reg = svc.register_agent(name, kind="simulation")
+    return svc.store.query_one("SELECT * FROM agents WHERE id=?", (reg["agent_id"],))
+
+
+SIM_CAST = [
+    ("sim-opencode", "web-app"),
+    ("sim-claude-code", "api-refactor"),
+    ("sim-hermes", "work-trip"),
+]
+
+
+@app.post("/demo/simulation")
+def demo_simulation():
+    """Multi-agent simulation: three agents, three projects, overlapping categories.
+
+    Labelled simulation, real rails: every question and proposal goes through
+    the same service paths a live harness uses, onto the same ledger.
+    Beats: (1) same-category questions from different agents, (2) steerable
+    proposals in one shared category, (3) a locked-category attempt.
+    """
+    import uuid as _uuid
+    run = _uuid.uuid4().hex[:8]
+    agents = {name: _sim_agent(name) for name, _ in SIM_CAST}
+    questions = []
+
+    def ask(agent_name, question, category, project, reversibility="reversible"):
+        req = QuestionRequest(
+            request_id=f"sim-{run}-{len(questions)}", question=question, category=category,
+            reversibility=reversibility, intent_type="simulation",
+            context={"project": project})
+        out = svc.ask(agents[agent_name], req)
+        questions.append({"agent": agent_name, "project": project, "category": category,
+                          "question": question, "decision": out.get("decision"),
+                          "question_id": out.get("question_id")})
+        return out
+
+    ask("sim-opencode", "May I buy the domain switchboard-demo.com for $12 for the web app?",
+        "purchase", "web-app")
+    ask("sim-claude-code", "May I upgrade CI minutes for $20/month for the API refactor?",
+        "purchase", "api-refactor")
+    ask("sim-opencode", "May I deploy the web app to staging?", "deploy", "web-app",
+        reversibility="costly")
+    ask("sim-claude-code", "May I push the database migration to staging for the API refactor?",
+        "deploy", "api-refactor", reversibility="costly")
+    ask("sim-hermes", "May I pay the airport hotel $140 now?", "payments", "work-trip",
+        reversibility="costly")
+
+    proposals = []
+    p1 = svc.submit_proposal(
+        agents["sim-opencode"], "Pick a laptop for the design contractor",
+        "For the web-app project:\n· Eco Air 14 — $899 (simplest to own)\n"
+        "· Framework 13 — $1599 (most comfortable, repairable)\n· Titan 16 — $2499 (most novel)",
+        "purchase", DEMO_STEER_DIRECTIONS, project="web-app")
+    proposals.append({"agent": "sim-opencode", "project": "web-app", "id": p1["id"]})
+    p2 = svc.submit_proposal(
+        agents["sim-hermes"], "Pick a hotel for the offsite",
+        "For the work-trip project:\n· City Inn — $110/night (simplest, near the venue)\n"
+        "· Grand Central Hotel — $210/night (most comfortable)\n· Skyline Lofts — $320/night (most novel)",
+        "purchase", DEMO_STEER_DIRECTIONS, project="work-trip")
+    proposals.append({"agent": "sim-hermes", "project": "work-trip", "id": p2["id"]})
+    _notify("simulation")
+    return {"run": run, "kind": "simulation",
+            "agents": [{"name": n, "project": p} for n, p in SIM_CAST],
+            "questions": questions, "proposals": proposals,
+            "beats": [
+                "Answer one purchase question with Always (scope: under $50) — the other agent's purchase question inherits it.",
+                "Steer one proposal 'Cheaper' twice — the Passport taste for purchase updates for every agent.",
+                "Correct the purchase rule — blast radius spans both projects.",
+                "The payments question ignores all of it: locked, deliberate tap only.",
+            ]}
+
+
+def _sim_revise_if_sim(session_id, edge):
+    """Simulated agents answer a steer immediately, on the real rails."""
+    s = svc.store.query_one("SELECT * FROM steering_sessions WHERE id=?", (session_id,))
+    if not s:
+        return
+    agent = svc.store.query_one("SELECT * FROM agents WHERE id=?", (s["agent_id"],))
+    if not agent or not str(agent["name"]).startswith("sim-"):
+        return
+    import json as _json
+    dirs = {d["edge"]: d for d in _json.loads(s["directions_json"])}
+    d = dirs.get(edge)
+    if not d:
+        return
+    text = (f"Revised after your steer ({d['label'].lower()}): {d['expected_effect'].lower()} "
+            f"now leads this proposal.\n\n{s['proposal_text']}")
+    svc.revise_proposal(agent, session_id, text, note=f"simulation agent revised: {d['label']}")
 
 
 @app.post("/demo/tradeoff")

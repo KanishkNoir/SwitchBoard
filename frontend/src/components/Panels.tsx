@@ -245,6 +245,14 @@ export function InboxPanel({
                 {i.reversibility && i.reversibility !== "unknown" ? ` · ${i.reversibility}` : ""}
               </span>
               <div className="qtext">{i.question_text}</div>
+              {(() => {
+                try {
+                  const p = (JSON.parse(i.context_json || "{}") as { project?: string }).project;
+                  return p ? <span className="project-chip">project: {p}</span> : null;
+                } catch {
+                  return null;
+                }
+              })()}
               {i.batch_id && <div className="bb">Same decision asked more than once — one answer covers all of them.</div>}
               {i.is_locked && (
                 <div style={{ margin: "6px 0" }}>

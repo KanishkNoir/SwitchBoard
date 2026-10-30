@@ -55,11 +55,11 @@ class HubClient:
             return {"recorded": False, "reason_code": "hub_unreachable"}
 
     # Steering fails closed too: no hub, no proposal — never a local guess.
-    def submit_proposal(self, title, proposal_text, category, directions) -> dict:
+    def submit_proposal(self, title, proposal_text, category, directions, project=None) -> dict:
         try:
             return self._post("/api/steering/submit", {
                 "title": title, "proposal_text": proposal_text,
-                "category": category, "directions": directions})
+                "category": category, "directions": directions, "project": project})
         except Exception:
             return {"status": "deferred", "reason_code": "hub_unreachable", "id": None}
 

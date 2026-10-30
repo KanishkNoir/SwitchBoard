@@ -176,7 +176,8 @@ export default function SteeringPanel({ onEvent, onCount }: {
       )}
       <div className="stage-question">
         <span className="stage-eyebrow">
-          {isExample ? "Example · " : ""}{active.agent?.name ?? "Agent"} · {active.category} · version {active.version}
+          {isExample ? "Example · " : ""}{active.agent?.name ?? "Agent"} · {active.category}
+          {active.project ? ` · project: ${active.project}` : ""} · version {active.version}
           {active.locked && <span className="locked-pill">Locked · deliberate tap only</span>}
         </span>
         <span className="stage-q-text">{active.title}</span>
