@@ -27,8 +27,13 @@ volume = modal.Volume.from_name("switchboard-data", create_if_missing=True)
 secrets = [modal.Secret.from_name("switchboard-secrets")]
 
 
+# Single-container by design: the ledger is one SQLite file on the volume.
+# Multiple containers each hold a divergent copy of that file (Modal volumes
+# sync on commit/stop, not per-write), which made sessions flicker in and out
+# as requests landed on different containers. One container = one ledger.
 @app.function(image=image, volumes={"/data": volume}, secrets=secrets,
-              cpu=1.0, memory=1024, scaledown_window=300)
+              cpu=1.0, memory=1024, scaledown_window=300,
+              min_containers=1, max_containers=1)
 @modal.asgi_app()
 def web():
     import sys
@@ -51,7 +56,7 @@ mcp_secrets = secrets + [modal.Secret.from_name("switchboard-mcp")]
 
 
 @app.function(image=image, volumes={"/data": volume}, secrets=mcp_secrets,
-              cpu=1.0, memory=1024, scaledown_window=300)
+              cpu=1.0, memory=1024, scaledown_window=300, max_containers=1)
 @modal.asgi_app()
 def mcp_api():
     import sys
