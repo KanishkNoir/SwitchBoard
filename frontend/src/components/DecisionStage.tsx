@@ -10,7 +10,7 @@ interface Props {
   activeOverlay?: string | null;
 }
 
-const EDGE_LABEL: Record<Edge, string> = { top: "top", left: "left", right: "right", bottom: "bottom" };
+const ARROW: Record<Edge, string> = { top: "↑", left: "←", right: "→", bottom: "↓" };
 const KEY_EDGE: Record<string, Edge> = {
   ArrowUp: "top",
   ArrowLeft: "left",
@@ -19,7 +19,6 @@ const KEY_EDGE: Record<string, Edge> = {
 };
 
 export default function DecisionStage({ payload, imageSrc, objects, busy, onSteer, activeOverlay }: Props) {
-  const mediaRef = useRef<HTMLDivElement>(null);
   const touch = useRef<{ x: number; y: number } | null>(null);
 
   const actionFor = useCallback(
@@ -61,24 +60,36 @@ export default function DecisionStage({ payload, imageSrc, objects, busy, onStee
 
   const edgeBtn = (edge: Edge) => {
     const a = actionFor(edge);
+    if (!a) return <div className={`steer-cell steer-${edge} steer-empty`} aria-hidden="true" />;
     return (
       <button
-        className={`edge e-${edge}`}
-        disabled={!a}
-        onClick={() => a && onSteer(a.action_id)}
-        aria-label={a ? `${EDGE_LABEL[edge]}: ${a.label}` : edge}
+        className={`steer-cell steer-btn steer-${edge}`}
+        onClick={() => onSteer(a.action_id)}
+        aria-label={`${a.label} — ${a.expected_effect}`}
       >
-        <small>{EDGE_LABEL[edge]}</small>
-        <span>{a ? a.label : "—"}</span>
+        <span className="steer-arrow" aria-hidden="true">{ARROW[edge]}</span>
+        <span className="steer-label">{a.label}</span>
+        <span className="steer-effect">{a.expected_effect}</span>
       </button>
     );
   };
 
   return (
     <div className="stage">
+      <div className="stage-question">
+        <span className="stage-eyebrow">{payload ? "This demo agent is asking" : "Demo steering stage"}</span>
+        <span key={payload ? payload.question : "none"} className="stage-q-text">
+          {payload ? payload.question : "Which way should a suggestion lean?"}
+        </span>
+        <span className="stage-q-sub">
+          {payload
+            ? payload.context_summary ?? "Pick a direction below — the suggestion re-ranks or redraws that way."
+            : "Load a demo below and steer its suggestion four ways. Real questions from your agents arrive in the inbox, where you Allow or Deny them."}
+        </span>
+      </div>
+
       <div
         className="stage-media"
-        ref={mediaRef}
         onTouchStart={(e) => {
           touch.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
         }}
@@ -111,28 +122,36 @@ export default function DecisionStage({ payload, imageSrc, objects, busy, onStee
           </div>
         ) : (
           <div className="stage-empty">
-            <span className="big">{busy ?? "Nothing waiting on you."}</span>
-            Load a demo below, or connect an agent — when several agents ask the same
-            thing, you answer it once, here.
+            <span className="big">{busy ?? "Nothing loaded yet."}</span>
+            Try <b>Trade-off demo</b> or <b>Visual demo</b> below — then steer the result
+            with the four directions.
           </div>
         )}
       </div>
 
-      <div className="edgebar">
-        {edgeBtn("top")}
-        {edgeBtn("left")}
-        <div className="e-q">
-          <span key={payload ? payload.question : "none"} className="e-q-text">
-            {payload ? payload.question : "No active question"}
-          </span>
+      {payload ? (
+        <div className="steerpad" role="group" aria-label="Steer this suggestion">
+          <div className="steerpad-head">
+            <span className="steerpad-title">Which way should it lean?</span>
+            <span className="steerpad-hint">Tap a direction · swipe the picture · arrow keys</span>
+          </div>
+          <div className="steer-cross">
+            {edgeBtn("top")}
+            {edgeBtn("left")}
+            <div className="steer-cell steer-center">
+              <span>Steering only</span>
+              <small>Never buys, sends or deletes</small>
+            </div>
+            {edgeBtn("right")}
+            {edgeBtn("bottom")}
+          </div>
         </div>
-        {edgeBtn("right")}
-        {edgeBtn("bottom")}
-      </div>
-      <div className="question-meta">
-        <b>Gestures steer the recommendation. They never authorize a purchase, send, or deletion.</b>
-        {payload && <b>arrow keys / swipe work too</b>}
-      </div>
+      ) : (
+        <div className="steerpad steerpad-idle">
+          The four directions appear here once a demo is loaded. They only steer a
+          suggestion — they never approve anything.
+        </div>
+      )}
     </div>
   );
 }

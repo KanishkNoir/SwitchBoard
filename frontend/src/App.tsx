@@ -247,9 +247,9 @@ export default function App() {
         <section>
           <div className="panel">
             <div className="panel-head">
-              <h2>Decision</h2>
+              <h2>Steer a suggestion</h2>
               <span className="pill">
-                {payload ? payload.agent_id.replace("_", " ") : "no question loaded"}
+                {payload ? `demo · ${payload.agent_id.replace("_", " ")}` : "demo · nothing loaded"}
               </span>
             </div>
             <DecisionStage
@@ -330,9 +330,10 @@ export default function App() {
             </div>
             <div className="prose">
               <p>
-                Every card is one decision, with the evidence that produced it. Edge labels
-                are written for <em>this</em> question — the directions are just where your
-                hand already is.
+                The stage on the left is a <em>demo</em>: its four directions only steer a
+                suggestion — cheaper, bolder, simpler — and never approve anything. Real
+                questions from your agents are the cards in the inbox above; those you
+                Allow, Deny, or teach with Always.
               </p>
               <p>
                 A category moves shadow → suggest → warn → auto only on evidence you
