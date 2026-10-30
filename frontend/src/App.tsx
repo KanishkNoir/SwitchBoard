@@ -29,6 +29,8 @@ export default function App() {
   const [wizardDismissed, setWizardDismissed] = useState(false);
   const [showDemo, setShowDemo] = useState(false);
   const [steeringCount, setSteeringCount] = useState(0);
+  const [simBeats, setSimBeats] = useState<{ run: string; beats: string[] } | null>(null);
+  const [simError, setSimError] = useState("");
 
   useEffect(() => {
     api.onboarding().then(setOnboarding).catch(() => setOnboarding(null));
@@ -317,15 +319,34 @@ export default function App() {
                 <button
                   className="primary"
                   onClick={async () => {
-                    const out = await api.simulation();
-                    setNotice(`Simulation seeded: ${out.questions.length} questions, ${out.proposals.length} proposals across 3 agents.`);
-                    setTimeout(() => setNotice(""), 8000);
-                    loadInbox();
+                    setSimError("");
+                    try {
+                      const out = await api.simulation();
+                      setSimBeats({ run: out.run, beats: out.beats });
+                      setNotice(`Simulation live: ${out.questions.length} questions, ${out.proposals.length} proposals across 3 agents.`);
+                      setTimeout(() => setNotice(""), 8000);
+                      loadInbox();
+                      window.scrollTo({ top: 0, behavior: "smooth" });
+                    } catch {
+                      setSimError("The simulation didn't start — the hub may be unreachable. Nothing was seeded.");
+                    }
                   }}
                 >
                   Run multi-agent simulation (3 agents · 3 projects)
                 </button>
               </div>
+              {simError && <div className="empty" role="alert">{simError}</div>}
+              {simBeats && (
+                <div className="sim-beats">
+                  <div className="trajectory-title">Simulation live — your four beats</div>
+                  <ol>
+                    {simBeats.beats.map((b, i) => (
+                      <li key={i}>{b}</li>
+                    ))}
+                  </ol>
+                  <div className="bb">Scroll up: the questions are in “Waiting on you”, the proposals in “Steer an agent”.</div>
+                </div>
+              )}
             </div>
           ) : (
             <>

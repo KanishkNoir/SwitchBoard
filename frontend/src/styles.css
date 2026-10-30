@@ -128,6 +128,9 @@ main {
 .seg-mini .tab { min-height: 32px; padding: 4px 12px; font-size: 12.5px; }
 .steer-btn:disabled { opacity: 0.45; cursor: default; }
 
+.sim-beats { margin-top: 14px; text-align: left; }
+.sim-beats ol { margin: 8px 0 6px; padding-left: 20px; display: grid; gap: 6px; font-size: 14px; color: var(--ink); }
+
 .project-chip {
   display: inline-block; margin-top: 5px; padding: 2px 9px; border-radius: 999px;
   background: var(--inset); border: 1px solid var(--line);
