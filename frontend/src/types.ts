@@ -140,6 +140,13 @@ export interface EvalReport {
   notes: string[];
 }
 
+export interface OnboardingState {
+  completed: boolean;
+  locked_categories: string[];
+  categories: { category: string; stage: string; locked: number; risk_target: number }[];
+  t3_enabled: boolean;
+}
+
 export interface DebriefRow {
   decision_id: string;
   question_text: string;

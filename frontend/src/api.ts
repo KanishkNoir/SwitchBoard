@@ -60,6 +60,9 @@ export const api = {
   dismissNotice: (itemId: string) => post<{ dismissed: boolean }>(`/notices/${itemId}/dismiss`, {}),
   inboxDetail: (itemId: string) => get<Record<string, unknown>>(`/inbox/${itemId}/detail`),
   debrief: () => get<import("./types").DebriefRow[]>("/debrief"),
+  onboarding: () => get<import("./types").OnboardingState>("/onboarding"),
+  completeOnboarding: (body: unknown) =>
+    post<import("./types").OnboardingState>("/onboarding/complete", body),
   answerInbox: (itemId: string, body: unknown) =>
     post<{ decision_id: string; rule?: { action: string } | null }>(`/inbox/${itemId}/answer`, body),
   runEvaluation: () => post<import("./types").EvalReport>("/evaluation/replay", {}),

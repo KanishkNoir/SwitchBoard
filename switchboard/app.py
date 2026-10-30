@@ -163,6 +163,20 @@ def debrief(limit: int = 30):
     return svc.debrief(limit)
 
 
+@app.get("/onboarding")
+def onboarding():
+    return svc.onboarding_state()
+
+
+@app.post("/onboarding/complete")
+def onboarding_complete(body: dict):
+    try:
+        return svc.complete_onboarding(bool(body.get("model_calls", False)),
+                                       body.get("risk_choice", "balanced"))
+    except SwitchboardError as e:
+        return err(e)
+
+
 @app.get("/inbox/{item_id}/detail")
 def inbox_detail(item_id: str):
     try:

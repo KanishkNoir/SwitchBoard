@@ -427,7 +427,7 @@ class SwitchboardService:
             " (SELECT e.payload_json FROM events e WHERE e.object_type='question' AND e.object_id=d.question_id"
             "  AND e.event_type='attention.item_resolved' ORDER BY e.occurred_at DESC LIMIT 1) AS resolved_json"
             " FROM decisions d JOIN questions q ON q.id=d.question_id"
-            " ORDER BY d.created_at DESC LIMIT ?", (limit,))
+            " ORDER BY d.created_at DESC, d.rowid DESC LIMIT ?", (limit,))
         out = []
         for d in rows:
             answer = json.loads(d["answer_json"] or "null")
@@ -458,6 +458,32 @@ class SwitchboardService:
                 "stage": d["category_stage"], "created_at": d["created_at"],
             })
         return out
+
+    # ---------- first-run onboarding (§6.1) ----------
+    def onboarding_state(self) -> dict:
+        done = self.store.query_one(
+            "SELECT id FROM events WHERE event_type='onboarding.completed' LIMIT 1")
+        cats = self.store.query(
+            "SELECT category, stage, locked, risk_target FROM category_settings ORDER BY category")
+        return {"completed": bool(done),
+                "locked_categories": list(self.cfg.locked_categories),
+                "categories": cats,
+                "t3_enabled": self.ladder.t3 is not None}
+
+    def complete_onboarding(self, model_calls: bool = False, risk_choice: str = "balanced",
+                            actor="local_user") -> dict:
+        targets = {"careful": 0.01, "balanced": 0.02, "relaxed": 0.05}
+        if risk_choice not in targets:
+            raise SwitchboardError("INVALID_SCHEMA", "risk_choice must be careful|balanced|relaxed")
+        for cat in self.store.query("SELECT category FROM category_settings"):
+            self.store.execute(
+                "UPDATE category_settings SET risk_target=?, updated_at=? WHERE category=?",
+                (targets[risk_choice], now_iso(), cat["category"]))
+        self.store.emit("human", actor, "onboarding.completed", "system", "onboarding",
+                        {"model_calls": bool(model_calls), "risk_choice": risk_choice,
+                         "risk_target": targets[risk_choice]},
+                        evidence_class="human_confirmed")
+        return self.onboarding_state()
 
     # ---------- V2 warning-stage notices ----------
     def notices(self):

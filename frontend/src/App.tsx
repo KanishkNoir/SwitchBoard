@@ -4,6 +4,8 @@ import DecisionStage from "./components/DecisionStage";
 import EvaluationPanel from "./components/Evaluation";
 import { AgentsPanel, RulesPanel } from "./components/Manage";
 import { DebriefPanel, InboxPanel, ObjectsPanel, PassportPanel } from "./components/Panels";
+import { OnboardingWizard } from "./components/Onboarding";
+import type { OnboardingState } from "./types";
 import type { DecisionPayload, GroundedObject, InboxItem, TradeOption } from "./types";
 
 const LAPTOPS: TradeOption[] = [
@@ -22,6 +24,12 @@ export default function App() {
   const [out, setOut] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [view, setView] = useState<"decision" | "manage" | "evaluation" | "debrief">("decision");
+  const [onboarding, setOnboarding] = useState<OnboardingState | null>(null);
+  const [wizardDismissed, setWizardDismissed] = useState(false);
+
+  useEffect(() => {
+    api.onboarding().then(setOnboarding).catch(() => setOnboarding(null));
+  }, []);
   const segRef = useRef<HTMLDivElement>(null);
   const [segInk, setSegInk] = useState({ x: 2, w: 0 });
 
@@ -210,7 +218,11 @@ export default function App() {
         {notice && <span className="notice">{notice}</span>}
       </nav>
 
-      {view === "debrief" ? (
+      {onboarding && !onboarding.completed && !wizardDismissed ? (
+        <main className="view-morph" style={{ gridTemplateColumns: "minmax(0, 640px)", justifyContent: "center" }}>
+          <OnboardingWizard state={onboarding} onDone={() => setWizardDismissed(true)} />
+        </main>
+      ) : view === "debrief" ? (
         <main className="view-morph" style={{ gridTemplateColumns: "1fr" }}>
           <DebriefPanel />
         </main>

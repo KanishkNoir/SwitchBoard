@@ -313,6 +313,14 @@ table.eval td.bad { color: var(--red); }
 table.eval td.good { color: var(--green); }
 table.eval .ci { color: var(--faint); margin-left: 5px; font-size: 11px; }
 
+/* ---------- setup wizard ---------- */
+.wizard { max-width: 640px; margin: 24px auto; padding: 28px; }
+.wizard-title { font-size: 26px; letter-spacing: -0.022em; margin-bottom: 12px; }
+.wizard-dots { display: flex; gap: 6px; margin-bottom: 20px; }
+.dotstep { width: 26px; height: 5px; border-radius: 3px; background: color-mix(in srgb, var(--ink) 14%, transparent); transition: background 0.3s ease; }
+.dotstep.on { background: linear-gradient(90deg, var(--c-blue), var(--c-green)); }
+.riskchoice { justify-content: flex-start; }
+
 /* ---------- one-tap question cards ---------- */
 .qcard { touch-action: pan-y; transition: transform 0.18s ease; will-change: transform; }
 .qtext { font-size: 17px; font-weight: 600; letter-spacing: -0.014em; line-height: 1.35; margin: 6px 0 4px; }
