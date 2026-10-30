@@ -105,8 +105,15 @@ main {
 }
 @media (max-width: 900px) {
   main { grid-template-columns: 1fr; padding: 16px 14px 4px; gap: 16px; }
-  main > aside { order: -1; } /* your questions come first on a phone */
+  /* inbox is the first column now, so it already comes first on a phone */
 }
+
+/* Demo playground sits under the real flow, collapsed by default. */
+.demo-zone { max-width: 1200px; margin: 0 auto; padding: 8px 20px 4px; }
+@media (max-width: 900px) {
+  .demo-zone { padding: 4px 14px 2px; }
+}
+.demo-panel { opacity: 0.92; }
 
 /* ---------- segmented control ---------- */
 .viewtabs {

@@ -26,6 +26,7 @@ export default function App() {
   const [view, setView] = useState<"decision" | "manage" | "evaluation" | "debrief">("decision");
   const [onboarding, setOnboarding] = useState<OnboardingState | null>(null);
   const [wizardDismissed, setWizardDismissed] = useState(false);
+  const [showDemo, setShowDemo] = useState(false);
 
   useEffect(() => {
     api.onboarding().then(setOnboarding).catch(() => setOnboarding(null));
@@ -243,78 +244,9 @@ export default function App() {
           </aside>
         </main>
       ) : (
+      <>
       <main className="view-morph">
         <section>
-          <div className="panel">
-            <div className="panel-head">
-              <h2>Steer a suggestion</h2>
-              <span className="pill">
-                {payload ? `demo · ${payload.agent_id.replace("_", " ")}` : "demo · nothing loaded"}
-              </span>
-            </div>
-            <DecisionStage
-              payload={payload}
-              imageSrc={imageSrc}
-              objects={objects}
-              busy={busy}
-              onSteer={steer}
-              activeOverlay={activeOverlay}
-            />
-            <div className="btnrow">
-              <button onClick={loadTradeoff}>Trade-off demo</button>
-              <button onClick={loadVisual}>Visual demo</button>
-              <button className="primary" disabled={busy !== null} onClick={loadScout}>
-                {busy ? "Working…" : "Generate scene + segment with SAM 3.1"}
-              </button>
-              <label className="upload-btn">
-                Upload your photo
-                <input
-                  type="file"
-                  accept="image/*"
-                  hidden
-                  onChange={(e) => onUpload(e.target.files?.[0])}
-                />
-              </label>
-            </div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <span className="mono-note">find:</span>
-              <input
-                value={phrases}
-                onChange={(e) => setPhrases(e.target.value)}
-                style={{ flex: 1 }}
-                aria-label="Objects to find, comma separated"
-              />
-              {imageB64 && (
-                <button
-                  disabled={busy !== null}
-                  onClick={async () => {
-                    setBusy("Segmenting with SAM 3.1…");
-                    try {
-                      await segmentCurrent(imageB64, imageMime);
-                    } catch {
-                      setOut("Segmentation failed. Nothing was guessed.");
-                    }
-                    setBusy(null);
-                  }}
-                >
-                  Re-segment
-                </button>
-              )}
-            </div>
-            {out && <pre className="out">{out}</pre>}
-          </div>
-          <ObjectsPanel
-            objects={objects}
-            selected={selectedLabel}
-            onSelect={(o) => {
-              setSelectedLabel(o.label);
-              setActiveOverlay(o.overlay_png_b64 ?? null);
-              if (!o.overlay_png_b64) setOut(`No decoded mask for “${o.label}” — box only.`);
-            }}
-          />
-        </section>
-
-        <aside>
           <InboxPanel
             items={inbox}
             onRefresh={loadInbox}
@@ -323,6 +255,9 @@ export default function App() {
               setTimeout(() => setNotice(""), 6000);
             }}
           />
+        </section>
+
+        <aside>
           <PassportPanel />
           <div className="panel">
             <div className="panel-head">
@@ -330,10 +265,10 @@ export default function App() {
             </div>
             <div className="prose">
               <p>
-                The stage on the left is a <em>demo</em>: its four directions only steer a
-                suggestion — cheaper, bolder, simpler — and never approve anything. Real
-                questions from your agents are the cards in the inbox above; those you
-                Allow, Deny, or teach with Always.
+                These cards are the product: a question from one of your agents, answered
+                in one tap — Allow once, Deny, or Always to teach a standing rule with a
+                limit you set. Swipe works on the safe ones; locked ones always need a
+                deliberate tap.
               </p>
               <p>
                 A category moves shadow → suggest → warn → auto only on evidence you
@@ -344,6 +279,92 @@ export default function App() {
           </div>
         </aside>
       </main>
+
+      <section className="demo-zone">
+        <div className="panel demo-panel">
+          <div className="panel-head">
+            <h2>Demo playground</h2>
+            <button onClick={() => setShowDemo(!showDemo)} aria-expanded={showDemo}>
+              {showDemo ? "Hide demo" : "Try the demo"}
+            </button>
+          </div>
+          {!showDemo ? (
+            <div className="empty">
+              Not part of the real flow — a sandbox showing how a suggestion can be
+              steered four ways (cheaper, bolder, simpler…) and how SAM 3.1 grounds a
+              question in a photo. Your agents never see this.
+            </div>
+          ) : (
+            <>
+              <div className="panel-head">
+                <span className="pill">
+                  {payload ? `demo · ${payload.agent_id.replace("_", " ")}` : "demo · nothing loaded"}
+                </span>
+              </div>
+              <DecisionStage
+                payload={payload}
+                imageSrc={imageSrc}
+                objects={objects}
+                busy={busy}
+                onSteer={steer}
+                activeOverlay={activeOverlay}
+              />
+              <div className="btnrow">
+                <button onClick={loadTradeoff}>Trade-off demo</button>
+                <button onClick={loadVisual}>Visual demo</button>
+                <button className="primary" disabled={busy !== null} onClick={loadScout}>
+                  {busy ? "Working…" : "Generate scene + segment with SAM 3.1"}
+                </button>
+                <label className="upload-btn">
+                  Upload your photo
+                  <input
+                    type="file"
+                    accept="image/*"
+                    hidden
+                    onChange={(e) => onUpload(e.target.files?.[0])}
+                  />
+                </label>
+              </div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <span className="mono-note">find:</span>
+                <input
+                  value={phrases}
+                  onChange={(e) => setPhrases(e.target.value)}
+                  style={{ flex: 1 }}
+                  aria-label="Objects to find, comma separated"
+                />
+                {imageB64 && (
+                  <button
+                    disabled={busy !== null}
+                    onClick={async () => {
+                      setBusy("Segmenting with SAM 3.1…");
+                      try {
+                        await segmentCurrent(imageB64, imageMime);
+                      } catch {
+                        setOut("Segmentation failed. Nothing was guessed.");
+                      }
+                      setBusy(null);
+                    }}
+                  >
+                    Re-segment
+                  </button>
+                )}
+              </div>
+              {out && <pre className="out">{out}</pre>}
+              <ObjectsPanel
+                objects={objects}
+                selected={selectedLabel}
+                onSelect={(o) => {
+                  setSelectedLabel(o.label);
+                  setActiveOverlay(o.overlay_png_b64 ?? null);
+                  if (!o.overlay_png_b64) setOut(`No decoded mask for “${o.label}” — box only.`);
+                }}
+              />
+            </>
+          )}
+        </div>
+      </section>
+      </>
       )}
       <footer>
         Your agents ask first. You stay in control — every answer is recorded, and a
