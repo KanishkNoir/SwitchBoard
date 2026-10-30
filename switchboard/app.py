@@ -141,7 +141,7 @@ def inbox():
 def inbox_answer(item_id: str, body: dict):
     try:
         out = svc.answer_inbox(item_id, body.get("answer"), save_rule=body.get("save_rule"),
-                               dwell_ms=body.get("dwell_ms"))
+                               dwell_ms=body.get("dwell_ms"), origin=body.get("origin", "tap"))
         _notify("inbox")
         return out
     except SwitchboardError as e:
@@ -158,9 +158,27 @@ def risk(category: str):
     return svc.gate_readiness(category)
 
 
+@app.get("/inbox/{item_id}/detail")
+def inbox_detail(item_id: str):
+    try:
+        return svc.inbox_detail(item_id)
+    except SwitchboardError as e:
+        return err(e)
+
+
 @app.get("/notices")
 def notices():
     return svc.notices()
+
+
+@app.post("/notices/{item_id}/dismiss")
+def dismiss_notice(item_id: str):
+    try:
+        out = svc.dismiss_notice(item_id)
+        _notify("inbox")
+        return out
+    except SwitchboardError as e:
+        return err(e)
 
 
 @app.post("/notices/{item_id}/veto")

@@ -57,6 +57,8 @@ export const api = {
   drift: () => get<import("./types").DriftRow[]>("/drift"),
   notices: () => get<import("./types").NoticeItem[]>("/notices"),
   vetoNotice: (itemId: string) => post<{ vetoed: boolean }>(`/notices/${itemId}/veto`, {}),
+  dismissNotice: (itemId: string) => post<{ dismissed: boolean }>(`/notices/${itemId}/dismiss`, {}),
+  inboxDetail: (itemId: string) => get<Record<string, unknown>>(`/inbox/${itemId}/detail`),
   answerInbox: (itemId: string, body: unknown) =>
     post<{ decision_id: string; rule?: { action: string } | null }>(`/inbox/${itemId}/answer`, body),
   runEvaluation: () => post<import("./types").EvalReport>("/evaluation/replay", {}),

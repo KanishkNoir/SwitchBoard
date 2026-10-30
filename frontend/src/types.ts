@@ -47,6 +47,16 @@ export interface InboxItem {
   question_id: string;
   question_text: string;
   category: string;
+  agent_id?: string;
+  agent_name?: string | null;
+  risk_class?: string;
+  is_locked?: boolean;
+  swipe_eligible?: boolean;
+  requires_confirmation?: boolean;
+  eligibility_reasons?: string[];
+  options_json?: string | null;
+  reversibility?: string;
+  intent_type?: string;
   priority_score: number;
   batch_id?: string | null;
   deadline_at?: string | null;

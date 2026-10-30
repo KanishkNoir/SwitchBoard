@@ -384,6 +384,28 @@ class SwitchboardService:
         }
         return resp
 
+    def inbox_detail(self, item_id):
+        """Provenance for one inbox item: why it is here and what stands behind it."""
+        item = self.store.query_one("SELECT * FROM attention_items WHERE id=?", (item_id,))
+        if not item:
+            raise SwitchboardError("NOT_FOUND", "attention item")
+        q = self.store.query_one("SELECT * FROM questions WHERE id=?", (item["question_id"],))
+        agent = self.store.query_one("SELECT id,name,kind FROM agents WHERE id=?", (q["agent_id"],))
+        decisions = self.store.query(
+            "SELECT d.*, (SELECT GROUP_CONCAT(dru.rule_version_id) FROM decision_rule_uses dru"
+            " WHERE dru.decision_id=d.id) AS rule_version_ids FROM decisions d"
+            " WHERE d.question_id=? ORDER BY d.created_at DESC LIMIT 5", (q["id"],))
+        receipts = self.store.query(
+            "SELECT r.* FROM receipts r JOIN decisions d ON d.id=r.decision_id"
+            " WHERE d.question_id=? ORDER BY r.issued_at DESC LIMIT 5", (q["id"],))
+        events = self.store.query(
+            "SELECT event_type, actor_type, occurred_at FROM events"
+            " WHERE object_type='question' AND object_id=? ORDER BY occurred_at DESC LIMIT 10",
+            (q["id"],))
+        return {"item": item, "question": q, "agent": agent,
+                "eligibility": self.swipe_eligibility(q, item),
+                "decisions": decisions, "receipts": receipts, "events": events}
+
     # ---------- V2 warning-stage notices ----------
     def notices(self):
         return self.store.query(
@@ -392,6 +414,17 @@ class SwitchboardService:
             " (SELECT d.answer_json FROM decisions d WHERE d.question_id=q.id ORDER BY d.created_at DESC LIMIT 1) AS answer_json"
             " FROM attention_items ai JOIN questions q ON q.id=ai.question_id"
             " WHERE ai.status='notified' ORDER BY ai.created_at DESC")
+
+    def dismiss_notice(self, item_id, actor="local_user"):
+        """Accept a warn-stage answer silently: clear the notice, record nothing."""
+        item = self.store.query_one("SELECT * FROM attention_items WHERE id=? AND status='notified'",
+                                    (item_id,))
+        if not item:
+            raise SwitchboardError("NOT_FOUND", "notice")
+        self.store.execute("UPDATE attention_items SET status='resolved',updated_at=? WHERE id=?",
+                           (now_iso(), item_id))
+        self.store.emit("human", actor, "attention.notice_accepted", "question", item["question_id"], {})
+        return {"item_id": item_id, "dismissed": True}
 
     def veto_notice(self, item_id, actor="local_user"):
         """Veto a warn-stage answer: clear the notice and record a human negative."""
@@ -441,11 +474,40 @@ class SwitchboardService:
              req.deadline_at, batch_id, now_iso(), now_iso()))
         return batch_id
 
+    def swipe_eligibility(self, q, item=None) -> dict:
+        """Server-computed from stored question data — never from client claims.
+
+        A swipe is a shortcut, not an authorization: only verified reversible,
+        low-consequence, single, non-batched questions may be swiped at all.
+        Unknown reversibility fails closed.
+        """
+        cat = self.category(q["category"])
+        reasons = []
+        if cat["locked"] or q["risk_class"] == "locked":
+            reasons.append("locked")
+        if q["reversibility"] != "reversible":
+            reasons.append(f"reversibility_{q['reversibility']}")
+        if q["intent_type"] == "action_review":
+            reasons.append("action_review")
+        if item is not None and item.get("batch_id"):
+            reasons.append("batched")
+        options = json.loads(q["options_json"] or "[]")
+        if options:
+            reasons.append("has_options")
+        return {"swipe_eligible": not reasons, "is_locked": bool(cat["locked"] or q["risk_class"] == "locked"),
+                "requires_confirmation": bool(reasons), "eligibility_reasons": reasons}
+
     def inbox(self):
-        return self.store.query(
-            "SELECT ai.*, q.question_text, q.category, q.agent_id FROM attention_items ai"
-            " JOIN questions q ON q.id=ai.question_id WHERE ai.status='queued'"
+        rows = self.store.query(
+            "SELECT ai.*, q.question_text, q.category, q.agent_id, q.options_json,"
+            " q.reversibility, q.intent_type, q.risk_class, a.name AS agent_name"
+            " FROM attention_items ai JOIN questions q ON q.id=ai.question_id"
+            " LEFT JOIN agents a ON a.id=q.agent_id WHERE ai.status='queued'"
             " ORDER BY ai.priority_score DESC, ai.created_at ASC")
+        for r in rows:
+            q = self.store.query_one("SELECT * FROM questions WHERE id=?", (r["question_id"],))
+            r.update(self.swipe_eligibility(q, r))
+        return rows
 
     # Rubber-stamp signals are advisory only: they never block an answer.
     _APPROVAL_VALUES = {"allow", "yes", "approve", "approved", "true", "ok"}
@@ -517,11 +579,33 @@ class SwitchboardService:
                 "approval_streak": best, "burst_per_10min": burst,
                 "median_dwell_ms": median_dwell, "risk": risk, "signals": signals}
 
-    def answer_inbox(self, item_id, answer, actor="local_user", save_rule=None, dwell_ms=None):
+    def answer_inbox(self, item_id, answer, actor="local_user", save_rule=None, dwell_ms=None,
+                     origin="tap"):
         item = self.store.query_one("SELECT * FROM attention_items WHERE id=?", (item_id,))
         if not item:
             raise SwitchboardError("NOT_FOUND", "attention item")
+        if item["status"] != "queued":
+            raise SwitchboardError("CONFLICT", "attention item already resolved")
         q = self.store.query_one("SELECT * FROM questions WHERE id=?", (item["question_id"],))
+        # --- origin gate: a swipe is a shortcut, never an authorization ---
+        if origin not in ("tap", "swipe", "rule_sheet"):
+            raise SwitchboardError("INVALID_SCHEMA", "bad answer origin")
+        elig = self.swipe_eligibility(q, item)
+        if origin == "swipe" and not elig["swipe_eligible"]:
+            raise SwitchboardError(
+                "CONFIRMATION_REQUIRED",
+                f"swipe not allowed here ({', '.join(elig['eligibility_reasons'])}); deliberate tap required")
+        if save_rule:
+            if origin != "rule_sheet":
+                raise SwitchboardError(
+                    "CONFIRMATION_REQUIRED", "rules are created from the rule sheet, not a quick answer")
+            if elig["is_locked"]:
+                raise SwitchboardError("RULE_NOT_ALLOWED_LOCKED",
+                                       "locked categories cannot get standing rules")
+            scope = save_rule.get("scope") or {}
+            if not (scope.get("mandatory") or {}):
+                raise SwitchboardError(
+                    "RULE_SCOPE_REQUIRED", "a standing rule needs a non-empty scope; broad rules are not created silently")
         self.store.execute("UPDATE attention_items SET status='resolved',updated_at=? WHERE id=?",
                            (now_iso(), item_id))
         if item["batch_id"]:
@@ -542,7 +626,8 @@ class SwitchboardService:
             "INSERT INTO receipts(id,decision_id,receipt_type,why_text,evidence_ids_json,issued_at)"
             " VALUES(?,?,'answer','human_answered',?,?)", (rid, did, json.dumps([ev]), now_iso()))
         self.store.emit("human", actor, "attention.item_resolved", "question", item["question_id"],
-                        {"answer": answer_obj, "decision_id": did, "dwell_ms": dwell_ms},
+                        {"answer": answer_obj, "decision_id": did, "dwell_ms": dwell_ms,
+                         "origin": origin},
                         evidence_class="human_confirmed")
         self._record_fresh_evidence(q["category"], json.loads(q["context_json"] or "{}"), "answer_inbox")
         result = {"item_id": item_id, "evidence_id": ev, "decision_id": did, "receipt_id": rid,

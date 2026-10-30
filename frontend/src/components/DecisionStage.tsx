@@ -121,7 +121,11 @@ export default function DecisionStage({ payload, imageSrc, objects, busy, onStee
       <div className="edgebar">
         {edgeBtn("top")}
         {edgeBtn("left")}
-        <div className="e-q">{payload ? payload.question : "No active question"}</div>
+        <div className="e-q">
+          <span key={payload ? payload.question : "none"} className="e-q-text">
+            {payload ? payload.question : "No active question"}
+          </span>
+        </div>
         {edgeBtn("right")}
         {edgeBtn("bottom")}
       </div>

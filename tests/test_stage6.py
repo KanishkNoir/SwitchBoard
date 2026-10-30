@@ -28,7 +28,7 @@ def test_inbox_answer_creates_decision_and_rule_then_reuse():
                                    context={"env": "staging"}))
     items = svc.inbox()
     assert items
-    out = svc.answer_inbox(items[0]["id"], "staging",
+    out = svc.answer_inbox(items[0]["id"], "staging", origin="rule_sheet",
                            save_rule={"keywords": ["deploy", "target"],
                                       "scope": {"mandatory": {"env": "staging"}}})
     assert out["decision_id"] and out["rule"]["action"] == "created"
@@ -48,10 +48,12 @@ def test_inbox_answer_creates_decision_and_rule_then_reuse():
 def test_answer_same_keywords_supersedes_rule():
     svc, agent = make()
     svc.ask(agent, QuestionRequest(request_id="s1", question="Which deploy target?", category="purchase"))
-    svc.answer_inbox(svc.inbox()[0]["id"], "staging", save_rule={"keywords": ["deploy"]})
+    svc.answer_inbox(svc.inbox()[0]["id"], "staging", origin="rule_sheet",
+                     save_rule={"keywords": ["deploy"], "scope": {"mandatory": {"env": "staging"}}})
     svc.ask(agent, QuestionRequest(request_id="s2", question="Which deploy target?", category="purchase"))
     items = [i for i in svc.inbox()]
-    out = svc.answer_inbox(items[0]["id"], "prod", save_rule={"keywords": ["deploy"]})
+    out = svc.answer_inbox(items[0]["id"], "prod", origin="rule_sheet",
+                           save_rule={"keywords": ["deploy"], "scope": {"mandatory": {"env": "staging"}}})
     assert out["rule"]["action"] == "superseded"
     versions = svc.rule_versions(out["rule"]["rule_id"])
     assert len(versions) == 2 and versions[1]["answer_json"]

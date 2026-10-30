@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import DecisionStage from "./components/DecisionStage";
 import EvaluationPanel from "./components/Evaluation";
@@ -22,6 +22,14 @@ export default function App() {
   const [out, setOut] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [view, setView] = useState<"decision" | "manage" | "evaluation">("decision");
+  const segRef = useRef<HTMLDivElement>(null);
+  const [segInk, setSegInk] = useState({ x: 2, w: 0 });
+
+  // Liquid morph: one pill glides between segmented-control stops.
+  useEffect(() => {
+    const el = segRef.current?.querySelector<HTMLElement>(".tab.active");
+    if (el) setSegInk({ x: el.offsetLeft, w: el.offsetWidth });
+  }, [view]);
   const [notice, setNotice] = useState("");
   const [imageB64, setImageB64] = useState<string | null>(null);
   const [imageMime, setImageMime] = useState("image/webp");
@@ -41,7 +49,7 @@ export default function App() {
     api
       .health()
       .then((h) => {
-        setHealth("local server ok");
+        setHealth("Connected");
         setT3(h.t3_enabled);
       })
       .catch(() => setHealth("server unreachable"));
@@ -171,36 +179,42 @@ export default function App() {
             <span className="dot" />
             {health}
           </span>
-          <span>
-            reasoning tier: {t3 ? "live (modal → baseten → meta)" : "off — questions will defer"}
+          <span className="tier">
+            {t3 ? "Reasoning: on" : "Reasoning: off — questions will wait for you"}
           </span>
         </div>
       </header>
 
       <nav className="viewtabs">
-        <button className={view === "decision" ? "tab active" : "tab"} onClick={() => setView("decision")}>
-          Decide
-        </button>
-        <button className={view === "manage" ? "tab active" : "tab"} onClick={() => setView("manage")}>
-          Agents &amp; rules
-        </button>
-        <button
-          className={view === "evaluation" ? "tab active" : "tab"}
-          onClick={() => setView("evaluation")}
-        >
-          Evaluation
-        </button>
+        <div className="seg" role="tablist" aria-label="Views" ref={segRef}>
+          <span
+            className="seg-ink"
+            style={{ transform: `translateX(${segInk.x - 2}px)`, width: segInk.w }}
+          />
+          <button className={view === "decision" ? "tab active" : "tab"} onClick={() => setView("decision")}>
+            Decide
+          </button>
+          <button className={view === "manage" ? "tab active" : "tab"} onClick={() => setView("manage")}>
+            Agents &amp; rules
+          </button>
+          <button
+            className={view === "evaluation" ? "tab active" : "tab"}
+            onClick={() => setView("evaluation")}
+          >
+            Evaluation
+          </button>
+        </div>
         {notice && <span className="notice">{notice}</span>}
       </nav>
 
       {view === "evaluation" ? (
-        <main style={{ gridTemplateColumns: "1fr" }}>
+        <main className="view-morph" style={{ gridTemplateColumns: "1fr" }}>
           <section>
             <EvaluationPanel />
           </section>
         </main>
       ) : view === "manage" ? (
-        <main className="manage-grid">
+        <main className="manage-grid view-morph">
           <section>
             <RulesPanel />
           </section>
@@ -210,7 +224,7 @@ export default function App() {
           </aside>
         </main>
       ) : (
-      <main>
+      <main className="view-morph">
         <section>
           <div className="panel">
             <div className="panel-head">
@@ -302,8 +316,9 @@ export default function App() {
                 hand already is.
               </p>
               <p>
-                A category moves shadow → suggest → auto only on confirmed evidence, and
-                drops back the moment a correction or a failed canary says it should.
+                A category moves shadow → suggest → warn → auto only on evidence you
+                confirmed, and drops back the moment a correction or a failed canary
+                says it should.
               </p>
             </div>
           </div>
@@ -311,8 +326,8 @@ export default function App() {
       </main>
       )}
       <footer>
-        local-first · ledger on this machine · model calls are opt-in and fail closed · a risk
-        target is a policy goal, not a guarantee
+        Your agents ask first. You stay in control — every answer is recorded, and a
+        risk target is a goal, never a guarantee.
       </footer>
     </>
   );
