@@ -126,7 +126,9 @@ CREATE INDEX IF NOT EXISTS idx_cal_cat ON calibration_examples(category, prefere
 
 class Store:
     def __init__(self, db_path: str = ":memory:"):
-        self.conn = sqlite3.connect(db_path, check_same_thread=False)
+        # Generous busy timeout: on a network volume a checkpoint can stall
+        # behind another container's stop/commit; fail loudly, never wedge.
+        self.conn = sqlite3.connect(db_path, check_same_thread=False, timeout=30.0)
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(SCHEMA)
         # Additive migrations for ledgers created before a column existed.
@@ -134,6 +136,9 @@ class Store:
         if cols and "project" not in cols:
             self.conn.execute("ALTER TABLE steering_sessions ADD COLUMN project TEXT")
         self.conn.commit()
+        # Bound the WAL: SQLite auto-checkpoints past this size instead of
+        # accumulating an unrecoverable multi-megabyte backlog on the volume.
+        self.conn.execute("PRAGMA journal_size_limit=1048576")
 
     def close(self):
         self.conn.close()
