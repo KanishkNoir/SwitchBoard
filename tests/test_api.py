@@ -20,6 +20,13 @@ def test_health_and_demo_flow():
     assert s.status_code == 200 and s.json()["status"] == "steered"
 
 
+def test_demo_steer_malformed_is_400_not_500():
+    # A null/mismatched payload must fail loudly as a 400, never a 500 —
+    # and the UI surfaces the failure instead of swallowing the tap.
+    assert client.post("/demo/steer", json={"payload": None, "action_id": "cheaper"}).status_code == 400
+    assert client.post("/demo/steer", json={"payload": {"actions": []}, "action_id": "nope"}).status_code == 400
+
+
 def test_api_ask_requires_agent_key():
     r = client.post("/api/ask", json={"request_id": "x", "question": "hi?", "category": "purchase"})
     assert r.status_code == 401

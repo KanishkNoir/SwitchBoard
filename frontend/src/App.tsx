@@ -79,20 +79,28 @@ export default function App() {
   const loadTradeoff = async () => {
     setImageSrc(null);
     setObjects([]);
-    const p = await api.tradeoff(LAPTOPS);
-    setPayload(p);
-    setOut(
-      "Options\n" +
-        LAPTOPS.map((o) => `${o.id}  $${o.price}  comfort ${o.comfort}/10`).join("\n")
-    );
+    try {
+      const p = await api.tradeoff(LAPTOPS);
+      setPayload(p);
+      setOut(
+        "Options\n" +
+          LAPTOPS.map((o) => `${o.id}  $${o.price}  comfort ${o.comfort}/10`).join("\n")
+      );
+    } catch {
+      setOut("The demo didn't load — the hub may be unreachable. Nothing was started.");
+    }
   };
 
   const loadVisual = async () => {
     setImageSrc(null);
     setObjects([]);
-    const p = await api.visual("make this workspace calmer", [{ id: "o1", label: "desk lamp" }]);
-    setPayload(p);
-    setOut("Use “Generate scene + segment” to ground this question in a real segmented image.");
+    try {
+      const p = await api.visual("make this workspace calmer", [{ id: "o1", label: "desk lamp" }]);
+      setPayload(p);
+      setOut("Use “Generate scene + segment” to ground this question in a real segmented image.");
+    } catch {
+      setOut("The demo didn't load — the hub may be unreachable. Nothing was started.");
+    }
   };
 
   const segmentCurrent = async (b64: string, mime: string) => {
@@ -150,11 +158,15 @@ export default function App() {
   const steer = async (actionId: string) => {
     if (!payload) return;
     if (payload._options) {
-      const s = await api.steer(payload, actionId);
-      setOut(
-        `Steered: ${s.action_id} (${s.edge})\nWeights ${JSON.stringify(s.weights)}\nNew ranking\n` +
-          (s.ranked_option_ids ?? []).map((r, i) => `${i + 1}. ${r}`).join("\n")
-      );
+      try {
+        const s = await api.steer(payload, actionId);
+        setOut(
+          `Steered: ${s.action_id} (${s.edge})\nWeights ${JSON.stringify(s.weights)}\nNew ranking\n` +
+            (s.ranked_option_ids ?? []).map((r, i) => `${i + 1}. ${r}`).join("\n")
+        );
+      } catch {
+        setOut("That steer didn't go through — the hub may be unreachable. The ranking is unchanged.");
+      }
     } else if (imageB64) {
       setBusy("Editing the preview with Muse Image…");
       try {

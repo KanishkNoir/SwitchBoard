@@ -660,7 +660,7 @@ def demo_steer_edit(body: dict):
 def demo_steer(body: dict):
     try:
         return apply_steering(body["payload"], body["action_id"])
-    except (ValueError, KeyError) as e:
+    except (ValueError, KeyError, TypeError) as e:
         return JSONResponse(status_code=400, content={"error": "INVALID_SCHEMA", "detail": str(e)})
 
 
