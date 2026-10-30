@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api";
+import { subscribeStream } from "./stream";
 import DecisionStage from "./components/DecisionStage";
 import EvaluationPanel from "./components/Evaluation";
 import { AgentsPanel, RulesPanel } from "./components/Manage";
@@ -72,9 +73,7 @@ export default function App() {
       })
       .catch(() => setHealth("server unreachable"));
     loadInbox();
-    const es = new EventSource("/stream");
-    es.onmessage = () => loadInbox();
-    return () => es.close();
+    return subscribeStream(loadInbox);
   }, [loadInbox]);
 
   const loadTradeoff = async () => {

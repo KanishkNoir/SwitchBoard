@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api";
+import { subscribeStream } from "../stream";
 import type { Edge, SteeringSession } from "../types";
 
 const ARROW: Record<Edge, string> = { top: "↑", left: "←", right: "→", bottom: "↓" };
@@ -71,13 +72,12 @@ export default function SteeringPanel({ onEvent, onCount }: {
 
   useEffect(() => {
     load();
-    // Phase 3: revisions arrive over the event stream, not a poll timer.
+    // Revisions arrive over the shared tab stream, not a poll timer.
     // A slow backup poll survives missed events; it almost never fires.
-    const es = new EventSource("/stream");
-    es.onmessage = () => load();
+    const unsub = subscribeStream(load);
     const backup = setInterval(load, 60000);
     return () => {
-      es.close();
+      unsub();
       clearInterval(backup);
     };
   }, [load]);

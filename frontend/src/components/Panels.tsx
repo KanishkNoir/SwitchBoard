@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api";
+import { subscribeStream } from "../stream";
 import type { AttentionHealth, DriftRow, GroundedObject, InboxItem, NoticeItem, Passport } from "../types";
 
 // Categories are neutral text now. The colour spectrum belongs only to the
@@ -459,9 +460,7 @@ export function DebriefPanel() {
   }, []);
   useEffect(() => {
     load();
-    const es = new EventSource("/stream"); // history follows events, not a timer
-    es.onmessage = () => load();
-    return () => es.close();
+    return subscribeStream(load); // history follows events, not a timer
   }, [load]);
   const answerText = (r: import("../types").DebriefRow) =>
     typeof r.answer === "object" && r.answer !== null
