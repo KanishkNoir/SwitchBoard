@@ -1,7 +1,29 @@
 import json
+import os
 import sqlite3
+import time
 import uuid
 from datetime import datetime, timezone
+
+# Per-request SQLite accounting, read by the Server-Timing middleware.
+# Stored on the Store (not a contextvar): sync FastAPI endpoints run in a
+# worker thread whose context mutations never propagate back to the
+# middleware. Single-writer hub, so last-request attribution is exact.
+def reset_sqlite_stats(store=None):
+    if store is not None:
+        store.last_sqlite_ms = 0.0
+        store.last_sqlite_queries = 0
+
+
+def sqlite_stats(store=None):
+    if store is None:
+        return 0.0, 0
+    return getattr(store, "last_sqlite_ms", 0.0), getattr(store, "last_sqlite_queries", 0)
+
+
+def _record(store, ms: float):
+    store.last_sqlite_ms = getattr(store, "last_sqlite_ms", 0.0) + ms
+    store.last_sqlite_queries = getattr(store, "last_sqlite_queries", 0) + 1
 
 
 def now_iso() -> str:
@@ -13,7 +35,6 @@ def new_id() -> str:
 
 
 SCHEMA = """
-PRAGMA journal_mode=WAL;
 PRAGMA foreign_keys=ON;
 CREATE TABLE IF NOT EXISTS agents(
   id TEXT PRIMARY KEY, name TEXT NOT NULL, kind TEXT NOT NULL,
@@ -116,11 +137,16 @@ CREATE TABLE IF NOT EXISTS steering_revisions(
   version INTEGER NOT NULL, proposal_text TEXT NOT NULL, note TEXT,
   created_at TEXT NOT NULL, UNIQUE(session_id, version));
 CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type, occurred_at);
+CREATE INDEX IF NOT EXISTS idx_events_obj ON events(object_type, object_id, occurred_at);
 CREATE INDEX IF NOT EXISTS idx_questions_cat ON questions(category, created_at);
+CREATE INDEX IF NOT EXISTS idx_dec_q ON decisions(question_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_dru_rule ON decision_rule_uses(rule_version_id);
 CREATE INDEX IF NOT EXISTS idx_attn_status ON attention_items(status, priority_score, created_at);
+CREATE INDEX IF NOT EXISTS idx_attn_q ON attention_items(question_id, status);
 CREATE INDEX IF NOT EXISTS idx_dep_receipt ON decision_dependencies(source_receipt_id);
 CREATE INDEX IF NOT EXISTS idx_cal_cat ON calibration_examples(category, preference_epoch, split);
+CREATE INDEX IF NOT EXISTS idx_rev_session ON steering_revisions(session_id, version);
+CREATE INDEX IF NOT EXISTS idx_steer_status ON steering_sessions(status, updated_at);
 """
 
 
@@ -130,6 +156,16 @@ class Store:
         # behind another container's stop/commit; fail loudly, never wedge.
         self.conn = sqlite3.connect(db_path, check_same_thread=False, timeout=30.0)
         self.conn.row_factory = sqlite3.Row
+        # Every mutating execute bumps the generation: read caches key on it,
+        # so a write can never be followed by a stale read from this store.
+        self.write_seq = 0
+        journal = os.environ.get("SWITCHBOARD_JOURNAL_MODE", "wal").lower()
+        if journal not in ("wal", "delete"):
+            journal = "wal"
+        try:
+            self.conn.execute(f"PRAGMA journal_mode={journal}")
+        except Exception:
+            pass
         self.conn.executescript(SCHEMA)
         # Additive migrations for ledgers created before a column existed.
         cols = {r[1] for r in self.conn.execute("PRAGMA table_info(steering_sessions)")}
@@ -143,27 +179,42 @@ class Store:
     def close(self):
         self.conn.close()
 
-    def execute(self, sql, params=()):
-        cur = self.conn.execute(sql, params)
-        self.conn.commit()
-        return cur
+    def _timed(self, sql, params, mutating: bool):
+        t0 = time.perf_counter()
+        try:
+            cur = self.conn.execute(sql, params)
+            if mutating:
+                self.conn.commit()
+                self.write_seq += 1
+            return cur
+        finally:
+            _record(self, (time.perf_counter() - t0) * 1000.0)
+
+    def execute(self, sql, params=(), count=True):
+        # count=False is reserved for append-only audit writes (e.g. the
+        # passport history table) that no read endpoint depends on: they must
+        # not invalidate the read cache they are computed alongside.
+        if not count:
+            cur = self._timed(sql, params, mutating=True)
+            self.write_seq -= 1
+            return cur
+        return self._timed(sql, params, mutating=True)
 
     def query(self, sql, params=()):
-        return [dict(r) for r in self.conn.execute(sql, params).fetchall()]
+        return [dict(r) for r in self._timed(sql, params, mutating=False).fetchall()]
 
     def query_one(self, sql, params=()):
-        row = self.conn.execute(sql, params).fetchone()
+        row = self._timed(sql, params, mutating=False).fetchone()
         return dict(row) if row else None
 
     def emit(self, actor_type, actor_id, event_type, object_type, object_id,
              payload=None, evidence_class=None, correlation_id=None):
         eid = new_id()
         ts = now_iso()
-        self.conn.execute(
+        self.execute(
             "INSERT INTO events(id,occurred_at,recorded_at,actor_type,actor_id,event_type,"
             "object_type,object_id,correlation_id,payload_json,schema_version,source_evidence_class)"
             " VALUES(?,?,?,?,?,?,?,?,?,?,1,?)",
             (eid, ts, ts, actor_type, actor_id, event_type, object_type, object_id,
              correlation_id, json.dumps(payload or {}), evidence_class))
-        self.conn.commit()
         return eid

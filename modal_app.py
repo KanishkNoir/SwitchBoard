@@ -17,7 +17,7 @@ app = modal.App("switchboard")
 image = (
     modal.Image.debian_slim(python_version="3.12")
     .pip_install("fastapi>=0.115", "uvicorn>=0.30", "httpx>=0.27",
-                 "pydantic>=2.7", "meta-sam-parser>=0.0.4", "mcp>=1.9")
+                 "pydantic>=2.7", "meta-sam-parser>=0.0.4")
     .add_local_dir("switchboard", remote_path="/app/switchboard")
     .add_local_dir("frontend/dist", remote_path="/app/frontend/dist")
     .add_local_file("pyproject.toml", remote_path="/app/pyproject.toml")
@@ -41,8 +41,10 @@ def web():
         sys.path.insert(0, "/app")
     os.chdir("/app")
     os.environ.setdefault("SWITCHBOARD_DB", "/data/switchboard.db")
-    # Commit volume writes periodically is handled by Modal on container stop;
-    # our SQLite WAL lives on the volume at /data.
+    # Rollback-journal mode on the hub: WAL is unsupported over a network
+    # filesystem (sqlite.org/wal.html) and the volume is commit/reload object
+    # storage, not a live shared FS. Local dev keeps WAL for speed.
+    os.environ.setdefault("SWITCHBOARD_JOURNAL_MODE", "delete")
     from switchboard.app import app as fastapi_app
     return fastapi_app
 

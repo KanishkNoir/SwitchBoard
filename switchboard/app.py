@@ -47,6 +47,52 @@ def _notify(event: str):
         q.put_nowait(event)
 
 
+@app.middleware("http")
+async def server_timing(request: Request, call_next):
+    """Phase 0 observability: split every response into app time vs SQLite time."""
+    import time as _time
+    from .persistence import reset_sqlite_stats, sqlite_stats
+    reset_sqlite_stats(store)
+    t0 = _time.perf_counter()
+    try:
+        resp = await call_next(request)
+    except Exception:
+        raise
+    total_ms = (_time.perf_counter() - t0) * 1000.0
+    sql_ms, nq = sqlite_stats(store)
+    resp.headers["Server-Timing"] = (
+        f"app;dur={total_ms:.1f}, sqlite;dur={sql_ms:.1f}, queries;count={nq}")
+    return resp
+
+
+# Phase 2 read cache (Snowflake-style persisted results): hot reads are keyed
+# on (endpoint, params, write_seq) and served without touching SQLite while
+# nothing has changed. Any write bumps write_seq inside the same commit, so a
+# cached read can never follow a write it doesn't include.
+_read_cache: dict = {}
+
+
+def cached_read(key: str, params: str, compute):
+    gen = store.write_seq
+    ckey = (key, params, gen)
+    if ckey in _read_cache:
+        body, etag = _read_cache[ckey]
+        return body, etag, True
+    body = compute()
+    etag = f'"{abs(hash(json.dumps(body, sort_keys=True, default=str))) % 10**12}"'
+    for k in [k for k in _read_cache if k[2] != gen]:
+        del _read_cache[k]  # only the current generation is ever servable
+    _read_cache[ckey] = (body, etag)
+    return body, etag, False
+
+
+def cached_response(request: Request, key: str, params: str, compute):
+    body, etag, hit = cached_read(key, params, compute)
+    if request.headers.get("if-none-match") == etag:
+        return JSONResponse(status_code=304, content=None, headers={"ETag": etag})
+    return JSONResponse(content=body, headers={"ETag": etag, "X-Cache": "HIT" if hit else "MISS"})
+
+
 def err(e: SwitchboardError):
     return JSONResponse(status_code=400, content={"error": e.code, "detail": str(e)})
 
@@ -168,8 +214,8 @@ def steering_pending(session_id: str, x_agent_key: str | None = Header(default=N
 
 # ---- human (local PWA) routes ----
 @app.get("/steering")
-def steering_list():
-    return svc.list_steering()
+def steering_list(request: Request):
+    return cached_response(request, "steering", "", svc.list_steering)
 
 
 @app.get("/steering/{session_id}")
@@ -203,11 +249,11 @@ def steering_resolve(session_id: str, body: dict):
 
 
 @app.get("/taste")
-def taste():
-    return svc.taste_profile()
+def taste(request: Request):
+    return cached_response(request, "taste", "", svc.taste_profile)
 @app.get("/inbox")
-def inbox():
-    return svc.inbox()
+def inbox(request: Request):
+    return cached_response(request, "inbox", "", svc.inbox)
 
 
 @app.post("/inbox/{item_id}/answer")
@@ -232,8 +278,8 @@ def risk(category: str):
 
 
 @app.get("/debrief")
-def debrief(limit: int = 30):
-    return svc.debrief(limit)
+def debrief(request: Request, limit: int = 30):
+    return cached_response(request, "debrief", str(limit), lambda: svc.debrief(limit))
 
 
 @app.get("/onboarding")
@@ -355,8 +401,8 @@ def set_category(category: str, body: dict):
 
 
 @app.get("/passport/{category}")
-def passport(category: str):
-    return svc.passport(category)
+def passport(request: Request, category: str):
+    return cached_response(request, "passport", category, lambda: svc.passport(category))
 
 
 @app.post("/away/grants")

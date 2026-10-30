@@ -52,10 +52,15 @@ export default function SteeringPanel({ onEvent, onCount }: {
   const [strong, setStrong] = useState(false);
   const [msg, setMsg] = useState("");
   const touch = useRef<{ x: number; y: number } | null>(null);
+  const lastHash = useRef("");
 
   const load = useCallback(async () => {
     try {
       const list = await api.steering();
+      // Unchanged payloads never touch state: no re-render, no list churn.
+      const h = JSON.stringify(list.map((s) => [s.id, s.version, s.status, s.updated_at]));
+      if (h === lastHash.current) return;
+      lastHash.current = h;
       setSessions(list);
       onCount?.(list.length);
       setActiveId((cur) => (cur && list.some((s) => s.id === cur) ? cur : list[0]?.id ?? null));
@@ -66,8 +71,15 @@ export default function SteeringPanel({ onEvent, onCount }: {
 
   useEffect(() => {
     load();
-    const t = setInterval(load, 5000); // agent revisions land in place
-    return () => clearInterval(t);
+    // Phase 3: revisions arrive over the event stream, not a poll timer.
+    // A slow backup poll survives missed events; it almost never fires.
+    const es = new EventSource("/stream");
+    es.onmessage = () => load();
+    const backup = setInterval(load, 60000);
+    return () => {
+      es.close();
+      clearInterval(backup);
+    };
   }, [load]);
 
   // Magnitude is per-proposal, per-moment — never sticky across sessions.

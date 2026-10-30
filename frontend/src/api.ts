@@ -10,10 +10,22 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
   return (await r.json()) as T;
 }
 
+// Phase 3: conditional reads. The server tags cacheable reads with an ETag
+// and answers 304 when nothing changed — the last body stays on screen and
+// no re-render fires at all.
+const etags = new Map<string, { etag: string; body: unknown }>();
+
 async function get<T>(path: string): Promise<T> {
-  const r = await fetch(path);
+  const prev = etags.get(path);
+  const r = await fetch(path, {
+    headers: prev ? { "If-None-Match": prev.etag } : {},
+  });
+  if (r.status === 304 && prev) return prev.body as T;
   if (!r.ok) throw new Error(`${path} → ${r.status}`);
-  return (await r.json()) as T;
+  const body = (await r.json()) as T;
+  const etag = r.headers.get("ETag");
+  if (etag) etags.set(path, { etag, body });
+  return body;
 }
 
 export const api = {

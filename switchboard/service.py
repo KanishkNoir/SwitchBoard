@@ -555,16 +555,17 @@ class SwitchboardService:
              req.deadline_at, batch_id, now_iso(), now_iso()))
         return batch_id
 
-    def swipe_eligibility(self, q, item=None) -> dict:
+    def swipe_eligibility(self, q, item=None, locked=None) -> dict:
         """Server-computed from stored question data — never from client claims.
 
         A swipe is a shortcut, not an authorization: only verified reversible,
         low-consequence, single, non-batched questions may be swiped at all.
         Unknown reversibility fails closed.
         """
-        cat = self.category(q["category"])
+        if locked is None:
+            locked = bool(self.category(q["category"])["locked"])
         reasons = []
-        if cat["locked"] or q["risk_class"] == "locked":
+        if locked or q["risk_class"] == "locked":
             reasons.append("locked")
         if q["reversibility"] != "reversible":
             reasons.append(f"reversibility_{q['reversibility']}")
@@ -575,19 +576,24 @@ class SwitchboardService:
         options = json.loads(q["options_json"] or "[]")
         if options:
             reasons.append("has_options")
-        return {"swipe_eligible": not reasons, "is_locked": bool(cat["locked"] or q["risk_class"] == "locked"),
+        return {"swipe_eligible": not reasons, "is_locked": bool(locked or q["risk_class"] == "locked"),
                 "requires_confirmation": bool(reasons), "eligibility_reasons": reasons}
 
     def inbox(self):
+        """Two queries total: the join carries every question field the
+        eligibility gate needs, plus each category's lock flag (was 1 + 2N)."""
         rows = self.store.query(
             "SELECT ai.*, q.question_text, q.category, q.agent_id, q.options_json, q.context_json,"
-            " q.reversibility, q.intent_type, q.risk_class, a.name AS agent_name"
+            " q.reversibility, q.intent_type, q.risk_class, a.name AS agent_name,"
+            " COALESCE(cs.locked, 0) AS cat_locked"
             " FROM attention_items ai JOIN questions q ON q.id=ai.question_id"
-            " LEFT JOIN agents a ON a.id=q.agent_id WHERE ai.status='queued'"
+            " LEFT JOIN agents a ON a.id=q.agent_id"
+            " LEFT JOIN category_settings cs ON cs.category=q.category"
+            " WHERE ai.status='queued'"
             " ORDER BY ai.priority_score DESC, ai.created_at ASC")
         for r in rows:
-            q = self.store.query_one("SELECT * FROM questions WHERE id=?", (r["question_id"],))
-            r.update(self.swipe_eligibility(q, r))
+            locked = r.pop("cat_locked")
+            r.update(self.swipe_eligibility(r, r, locked=bool(locked)))
         return rows
 
     # Rubber-stamp signals are advisory only: they never block an answer.
@@ -990,7 +996,8 @@ class SwitchboardService:
         self.store.execute(
             "INSERT INTO autonomy_passports(id,category,stage,evidence_summary_json,limitations_json,reason,created_at)"
             " VALUES(?,?,?,?,?,?,?)", (new_id(), category, cat["stage"], json.dumps(data),
-                                       json.dumps(data["limitations"]), cat["min_evidence_state"], now_iso()))
+                                       json.dumps(data["limitations"]), cat["min_evidence_state"], now_iso()),
+            count=False)
         return data
 
     def run_canary(self, category, case_id, expected, observed, run_type="shadow"):
@@ -1061,20 +1068,9 @@ class SwitchboardService:
                         {"category": category, "version": 1})
         return self.steering_session(sid)
 
-    def steering_session(self, session_id, agent=None) -> dict:
-        s = self.store.query_one("SELECT * FROM steering_sessions WHERE id=?", (session_id,))
-        if not s:
-            raise SwitchboardError("NOT_FOUND", "steering session")
-        if agent is not None and s["agent_id"] != agent["id"]:
-            raise SwitchboardError("NOT_FOUND", "steering session")
-        agent_row = self.store.query_one("SELECT id,name,kind FROM agents WHERE id=?", (s["agent_id"],))
-        revisions = self.store.query(
-            "SELECT version,proposal_text,note,created_at FROM steering_revisions"
-            " WHERE session_id=? ORDER BY version", (session_id,))
-        events = self.store.query(
-            "SELECT event_type,actor_type,payload_json,occurred_at FROM events"
-            " WHERE object_type='steering_session' AND object_id=? ORDER BY occurred_at, rowid",
-            (session_id,))
+    def _assemble_session(self, s, agent_row, revisions, events, locked_map=None) -> dict:
+        """One dict from pre-fetched parts. Batch callers fetch all parts in
+        three queries total; single-session callers fetch just their own."""
         trajectory = []
         for e in events:
             try:
@@ -1090,18 +1086,62 @@ class SwitchboardService:
                 break
             if t["event"] in ("steering.proposal_revised", "steering.accepted", "steering.rejected"):
                 break
+        if locked_map is None:
+            locked_map = {s["category"]: bool(self.category(s["category"])["locked"])}
         return {"id": s["id"], "agent": agent_row, "category": s["category"],
                 "project": s.get("project"),
-                "locked": bool(self.category(s["category"])["locked"]), "title": s["title"],
+                "locked": bool(locked_map.get(s["category"], False)), "title": s["title"],
                 "proposal_text": s["proposal_text"], "directions": json.loads(s["directions_json"]),
                 "version": s["version"], "status": s["status"],
                 "pending_steer": pending, "revisions": revisions, "trajectory": trajectory,
                 "created_at": s["created_at"], "updated_at": s["updated_at"]}
 
+    def steering_session(self, session_id, agent=None) -> dict:
+        s = self.store.query_one("SELECT * FROM steering_sessions WHERE id=?", (session_id,))
+        if not s:
+            raise SwitchboardError("NOT_FOUND", "steering session")
+        if agent is not None and s["agent_id"] != agent["id"]:
+            raise SwitchboardError("NOT_FOUND", "steering session")
+        agent_row = self.store.query_one("SELECT id,name,kind FROM agents WHERE id=?", (s["agent_id"],))
+        revisions = self.store.query(
+            "SELECT version,proposal_text,note,created_at FROM steering_revisions"
+            " WHERE session_id=? ORDER BY version", (session_id,))
+        events = self.store.query(
+            "SELECT event_type,actor_type,payload_json,occurred_at FROM events"
+            " WHERE object_type='steering_session' AND object_id=? ORDER BY occurred_at, rowid",
+            (session_id,))
+        return self._assemble_session(s, agent_row, revisions, events)
+
     def list_steering(self, status="open") -> list:
+        """Three queries total no matter the session count (was 1 + 4N)."""
         rows = self.store.query(
-            "SELECT id FROM steering_sessions WHERE status=? ORDER BY updated_at DESC", (status,))
-        return [self.steering_session(r["id"]) for r in rows]
+            "SELECT s.*, a.id AS aid, a.name AS aname, a.kind AS akind"
+            " FROM steering_sessions s LEFT JOIN agents a ON a.id=s.agent_id"
+            " WHERE s.status=? ORDER BY s.updated_at DESC", (status,))
+        if not rows:
+            return []
+        ids = [r["id"] for r in rows]
+        ph = ",".join("?" for _ in ids)
+        revs = self.store.query(
+            f"SELECT session_id,version,proposal_text,note,created_at FROM steering_revisions"
+            f" WHERE session_id IN ({ph}) ORDER BY version", ids)
+        evs = self.store.query(
+            f"SELECT object_id,event_type,actor_type,payload_json,occurred_at FROM events"
+            f" WHERE object_type='steering_session' AND object_id IN ({ph})"
+            f" ORDER BY occurred_at, rowid", ids)
+        by_rev: dict = {}
+        for r in revs:
+            by_rev.setdefault(r.pop("session_id"), []).append(r)
+        by_ev: dict = {}
+        for e in evs:
+            by_ev.setdefault(e.pop("object_id"), []).append(e)
+        cats = {r["category"] for r in rows}
+        locked_map = {c["category"]: bool(c["locked"]) for c in self.store.query(
+            f"SELECT category,locked FROM category_settings WHERE category IN "
+            f"({','.join('?' for _ in cats)})", list(cats))} if cats else {}
+        return [self._assemble_session(
+            r, {"id": r["aid"], "name": r["aname"], "kind": r["akind"]},
+            by_rev.get(r["id"], []), by_ev.get(r["id"], []), locked_map) for r in rows]
 
     def steer(self, session_id, edge, magnitude=1, actor="local_user") -> dict:
         """Record one nudge. Never resolves the session: no acceptance by gesture."""

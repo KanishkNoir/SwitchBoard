@@ -459,6 +459,9 @@ export function DebriefPanel() {
   }, []);
   useEffect(() => {
     load();
+    const es = new EventSource("/stream"); // history follows events, not a timer
+    es.onmessage = () => load();
+    return () => es.close();
   }, [load]);
   const answerText = (r: import("../types").DebriefRow) =>
     typeof r.answer === "object" && r.answer !== null

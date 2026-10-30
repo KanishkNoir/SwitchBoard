@@ -50,9 +50,14 @@ export default function App() {
   const [selectedLabel, setSelectedLabel] = useState<string | null>(null);
   const [phrases, setPhrases] = useState("lamp, laptop, plant");
 
+  const inboxHash = useRef("");
   const loadInbox = useCallback(async () => {
     try {
-      setInbox(await api.inbox());
+      const list = await api.inbox();
+      const h = JSON.stringify(list.map((i) => [i.id, i.question_text]));
+      if (h === inboxHash.current) return; // unchanged: no re-render
+      inboxHash.current = h;
+      setInbox(list);
     } catch {
       /* queue panel keeps its last state */
     }
