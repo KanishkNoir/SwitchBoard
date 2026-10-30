@@ -101,12 +101,22 @@ export default function SteeringPanel({ onEvent, onCount }: {
     load();
   };
 
+  const [resolving, setResolving] = useState<"left" | "right" | null>(null);
   const resolve = async (outcome: "accepted" | "rejected") => {
     if (!active) return;
+    const dir = outcome === "accepted" ? "right" : "left";
     try {
       await api.resolveSteering(active.id, outcome);
       setMsg(outcome === "accepted" ? `Accepted v${active.version}. The agent has the final version.` : "Rejected. The agent has been told no.");
       onEvent?.(outcome === "accepted" ? "Proposal accepted." : "Proposal rejected.");
+      if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        setResolving(dir);
+        setTimeout(() => {
+          load();
+          setResolving(null);
+        }, 380);
+        return;
+      }
     } catch {
       setMsg("That session is already closed.");
     }
@@ -158,7 +168,7 @@ export default function SteeringPanel({ onEvent, onCount }: {
   }
 
   return (
-    <div className="panel steering-panel">
+    <div className={`panel steering-panel${resolving ? ` resolving resolving-${resolving}` : ""}`}>
       <div className="panel-head">
         <h2>Steer an agent</h2>
         <span className="pill">{sessions.length} live proposal{sessions.length > 1 ? "s" : ""}</span>

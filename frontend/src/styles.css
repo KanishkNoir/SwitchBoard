@@ -131,6 +131,40 @@ main {
 .sim-beats { margin-top: 14px; text-align: left; }
 .sim-beats ol { margin: 8px 0 6px; padding-left: 20px; display: grid; gap: 6px; font-size: 14px; color: var(--ink); }
 
+/* Swish-and-poof: answered cards fly off in the direction of the verdict. */
+.qcard.leaving {
+  transition: transform 0.38s cubic-bezier(0.3, 0.7, 0.3, 1), opacity 0.32s ease;
+  pointer-events: none;
+}
+.qcard.leaving-right { transform: translateX(70vw) rotate(5deg) scale(0.88); opacity: 0; }
+.qcard.leaving-left { transform: translateX(-70vw) rotate(-5deg) scale(0.88); opacity: 0; }
+/* Resolved proposals drift off sideways with a soft blur. */
+.steering-panel.resolving .stage-question,
+.steering-panel.resolving .proposal-text,
+.steering-panel.resolving .steerpad,
+.steering-panel.resolving .trajectory {
+  transition: transform 0.36s ease-in, opacity 0.32s ease-in, filter 0.32s ease-in;
+}
+.steering-panel.resolving-right .stage-question,
+.steering-panel.resolving-right .proposal-text,
+.steering-panel.resolving-right .steerpad,
+.steering-panel.resolving-right .trajectory {
+  transform: translateX(12vw) scale(0.94); opacity: 0; filter: blur(3px);
+}
+.steering-panel.resolving-left .stage-question,
+.steering-panel.resolving-left .proposal-text,
+.steering-panel.resolving-left .steerpad,
+.steering-panel.resolving-left .trajectory {
+  transform: translateX(-12vw) scale(0.94); opacity: 0; filter: blur(3px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .qcard.leaving { transition: none; transform: none; opacity: 0; }
+  .steering-panel.resolving .stage-question,
+  .steering-panel.resolving .proposal-text,
+  .steering-panel.resolving .steerpad,
+  .steering-panel.resolving .trajectory { transition: none; transform: none; opacity: 0; filter: none; }
+}
+
 .project-chip {
   display: inline-block; margin-top: 5px; padding: 2px 9px; border-radius: 999px;
   background: var(--inset); border: 1px solid var(--line);

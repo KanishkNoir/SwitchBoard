@@ -84,6 +84,25 @@ export function InboxPanel({
   const answer = (id: string) => answers[id] ?? "";
   const keywords = (id: string) => keywordsMap[id] ?? "";
   const scopeOf = (id: string) => scopeMap[id] ?? { key: "", val: "" };
+  // Exit choreography: the card swishes off in the direction of the verdict,
+  // then the list refreshes. Reduced-motion users get an instant removal.
+  const [leaving, setLeaving] = useState<{ id: string; dir: "left" | "right" } | null>(null);
+  const swishOut = (item: InboxItem, value: string, done: () => void) => {
+    if (leaving) {
+      done();
+      return;
+    }
+    const dir = String(value).toLowerCase() === "deny" ? "left" : "right";
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      done();
+      return;
+    }
+    setLeaving({ id: item.id, dir });
+    setTimeout(() => {
+      done();
+      setLeaving(null);
+    }, 380);
+  };
   const [swipe, setSwipe] = useState<{ id: string; dx: number }>({ id: "", dx: 0 });
   const touchX = useRef<number | null>(null);
   const touchY = useRef<number | null>(null);
@@ -111,10 +130,11 @@ export function InboxPanel({
         origin,
       });
       onAnswered?.(value === "deny" ? "Denied. The agent has been told no." : "Done. The agent can carry on.");
+      swishOut(item, value, onRefresh);
     } catch {
       onAnswered?.("That one needs a deliberate tap — swipe is off for it. Use the buttons.");
+      onRefresh();
     }
-    onRefresh();
   };
 
   const createRule = async (item: InboxItem) => {
@@ -138,10 +158,11 @@ export function InboxPanel({
         `Rule ${out.rule?.action ?? "saved"} — it starts as a suggestion. Switchboard will still ask until the category earns more trust.`
       );
       setSheetOpen(null);
+      swishOut(item, "allow", onRefresh);
     } catch {
       onAnswered?.("Switchboard refused that rule (locked or unscoped categories can't get one). Nothing was saved.");
+      onRefresh();
     }
-    onRefresh();
   };
 
   // A written answer is answer-once, always. Rules are made only in the rule
@@ -158,7 +179,7 @@ export function InboxPanel({
     onAnswered?.("Answered once. Use Always… if you want this to become a standing rule.");
     setCustomOpen(null);
     setAnswers((m) => ({ ...m, [item.id]: "" }));
-    onRefresh();
+    swishOut(item, text, onRefresh);
   };
 
   // Tappable limits derived from the question itself — no developer vocabulary.
@@ -200,12 +221,13 @@ export function InboxPanel({
         items.map((i) => {
           const opts = itemOptions(i);
           const dx = swipe.id === i.id ? swipe.dx : 0;
+          const out = leaving?.id === i.id ? leaving.dir : null;
           return (
             <div
-              className="item qcard"
+              className={`item qcard${out ? ` leaving leaving-${out}` : ""}`}
               key={i.id}
               style={{
-                transform: dx ? `translateX(${dx}px)` : undefined,
+                transform: !out && dx ? `translateX(${dx}px)` : undefined,
                 background:
                   dx > 24
                     ? `linear-gradient(90deg, color-mix(in srgb, var(--c-green) ${Math.min(22, dx / 4)}%, transparent), transparent 65%)`
