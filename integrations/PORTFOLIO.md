@@ -29,7 +29,7 @@ Verification levels:
 |---|---|---|---|
 | Cursor | IDE coding | `.cursor/mcp.json` | config generated + placed in demo project; app not installed here |
 | Claude Desktop | desktop assistant | `claude_desktop_config.json` | **protocol-verified with the installed config at %APPDATA%\Claude (dedicated `claude-desktop` agent, pinned ledger paths); restart the app to pick it up** |
-| ChatGPT desktop/web | desktop assistant | remote MCP app (Developer Mode) | **endpoint live-verified: `https://kanishksingh-1106--switchboard-mcp-api.us-east.modal.run/mcp` (tools/list + ask recorded on the Modal ledger as the `chatgpt` agent); user adds it in ChatGPT Settings → Apps → Developer Mode; paid plan required, write tools may be plan-gated** |
+| ChatGPT desktop/web | desktop assistant | remote MCP app (Developer Mode) | **retired 2026-10-30: endpoint removed (no paid plan; unused attack surface). Rebuild = re-add the `mcp_api` ASGI function to modal_app.py; local MCP clients never used it** |
 | Hermes Agent | personal assistant | `~/.hermes/config.yaml` `mcp_servers:` | **verified live on the hub: runs on Baseten `meta-models/muse-spark-open-1026` (openai-api provider + OPENAI_BASE_URL), called `ask`, question recorded in the Modal inbox as `hermes-hub`; startup needs edge-tts preinstalled in its venv and direct venv-python spawn (uv cache ACL)** |
 | OpenClaw | personal assistant | `~/.openclaw/openclaw.json` `mcp.servers` | installed; `openclaw mcp list/show` verifies config; live run needs model setup |
 | Cline / Roo Code | VS Code coding | VS Code MCP settings JSON | candidate |
