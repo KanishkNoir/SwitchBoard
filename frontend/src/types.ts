@@ -215,9 +215,15 @@ export interface SteeringSession {
   directions: SteerDirection[];
   version: number;
   status: "open" | "accepted" | "rejected";
-  pending_steer: { edge: string; label: string } | null;
+  pending_steer: {
+    edge?: string;
+    label?: string;
+    request_text?: string;
+    expected_effect?: string;
+    base_version?: number;
+  } | null;
   revisions: { version: number; proposal_text: string; note: string | null; created_at: string }[];
-  trajectory: { event: string; actor: string; at: string; label?: string; edge?: string; version?: number }[];
+  trajectory: { event: string; actor: string; at: string; label?: string; request_text?: string; edge?: string; version?: number }[];
   created_at: string;
   updated_at: string;
 }

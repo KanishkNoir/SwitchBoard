@@ -1175,25 +1175,42 @@ class SwitchboardService:
             r, {"id": r["aid"], "name": r["aname"], "kind": r["akind"]},
             by_rev.get(r["id"], []), by_ev.get(r["id"], []), locked_map) for r in rows]
 
-    def steer(self, session_id, edge, magnitude=1, actor="local_user") -> dict:
-        """Record one nudge. Never resolves the session: no acceptance by gesture."""
+    def steer(self, session_id, edge=None, magnitude=1, actor="local_user", request_text=None) -> dict:
+        """Record one bounded steer request. It never resolves or authorizes the proposal."""
         s = self.store.query_one("SELECT * FROM steering_sessions WHERE id=?", (session_id,))
         if not s:
             raise SwitchboardError("NOT_FOUND", "steering session")
         if s["status"] != "open":
             raise SwitchboardError("CONFLICT", "session is closed")
+        if self.category(s["category"])["locked"]:
+            raise SwitchboardError("LOCKED_CATEGORY", "locked categories cannot be steered")
+        latest = self.store.query_one(
+            "SELECT event_type FROM events WHERE object_type='steering_session' AND object_id=? "
+            "ORDER BY rowid DESC LIMIT 1", (session_id,))
+        if latest and latest["event_type"] == "steering.applied":
+            raise SwitchboardError("CONFLICT", "the agent must revise the current steer before another is sent")
         dirs = {d["edge"]: d for d in json.loads(s["directions_json"])}
-        if edge not in dirs:
-            raise SwitchboardError("INVALID_SCHEMA", f"edge {edge} was not declared by the agent")
-        try:
-            mag = float(magnitude)
-        except (TypeError, ValueError):
-            raise SwitchboardError("INVALID_SCHEMA", "magnitude must be a number")
-        mag = max(0.25, min(2.0, mag))
-        d = dirs[edge]
-        instruction = {"type": "steer", "edge": edge, "label": d["label"],
-                       "expected_effect": d["expected_effect"], "magnitude": mag,
-                       "session_id": session_id, "base_version": s["version"]}
+        text = str(request_text or "").strip()
+        if text:
+            if edge is not None:
+                raise SwitchboardError("INVALID_SCHEMA", "send either an edge or a written request, not both")
+            if len(text) > 500:
+                raise SwitchboardError("INVALID_SCHEMA", "written steer request must be 500 characters or fewer")
+            instruction = {"type": "steer", "request_text": text,
+                           "label": text[:80], "session_id": session_id,
+                           "base_version": s["version"]}
+        else:
+            if edge not in dirs:
+                raise SwitchboardError("INVALID_SCHEMA", f"edge {edge} was not declared by the agent")
+            try:
+                mag = float(magnitude)
+            except (TypeError, ValueError):
+                raise SwitchboardError("INVALID_SCHEMA", "magnitude must be a number")
+            mag = max(0.25, min(2.0, mag))
+            d = dirs[edge]
+            instruction = {"type": "steer", "edge": edge, "label": d["label"],
+                           "expected_effect": d["expected_effect"], "magnitude": mag,
+                           "session_id": session_id, "base_version": s["version"]}
         self.store.execute("UPDATE steering_sessions SET updated_at=? WHERE id=?",
                            (now_iso(), session_id))
         self.store.emit("human", actor, "steering.applied", "steering_session", session_id,
@@ -1261,7 +1278,12 @@ class SwitchboardService:
         counts: dict = {}
         for r in self.store.query(sql, params):
             try:
-                label = json.loads(r["payload_json"] or "{}").get("label", "?")
+                payload = json.loads(r["payload_json"] or "{}")
+                # Open-ended requests are one-off instructions, not a reusable
+                # preference label for the Passport to aggregate.
+                if payload.get("request_text"):
+                    continue
+                label = payload.get("label", "?")
             except ValueError:
                 label = "?"
             counts.setdefault(r["category"], {}).setdefault(label, 0)

@@ -78,11 +78,17 @@ export const api = {
   answerInbox: (itemId: string, body: unknown) =>
     post<{ decision_id: string; rule?: { action: string } | null }>(`/inbox/${itemId}/answer`, body),
   steering: () => get<import("./types").SteeringSession[]>("/steering"),
+  steeringSuggestions: (id: string) =>
+    post<{ suggestions: { text: string; why: string }[]; model?: string }>(
+      `/steering/${id}/suggestions`, {}
+    ),
+  steeringSummary: (id: string) =>
+    post<{ summary: string; model?: string }>(`/steering/${id}/summary`, {}),
   demoSteeringProposal: () => post<import("./types").SteeringSession>("/demo/steering-proposal", {}),
   simulation: () =>
     post<{ run: string; questions: unknown[]; proposals: unknown[]; beats: string[] }>("/demo/simulation", {}),
-  steerSession: (id: string, edge: string, magnitude: number) =>
-    post<{ instruction: unknown }>(`/steering/${id}/steer`, { edge, magnitude }),
+  steerSession: (id: string, body: { edge?: string; magnitude?: number; request_text?: string }) =>
+    post<{ instruction: unknown }>(`/steering/${id}/steer`, body),
   resolveSteering: (id: string, outcome: "accepted" | "rejected") =>
     post<import("./types").SteeringSession>(`/steering/${id}/resolve`, { outcome }),
   taste: () => get<{ category: string; leans: [string, number][] }[]>("/taste"),

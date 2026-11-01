@@ -2,6 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState, type TouchEvent } fr
 import { api } from "../api";
 import { subscribeStream } from "../stream";
 import type { Edge, InboxItem, SteeringSession } from "../types";
+import AdaptiveSteer from "./AdaptiveSteer";
+import ProposalBody from "./ProposalBody";
+import RevisionSummary from "./RevisionSummary";
 
 type Lane = "questions" | "proposals";
 
@@ -34,11 +37,15 @@ export default function FocusMode({
   onRefresh,
   onExit,
   onAnswered,
+  modelEnabled = false,
+  summaryEnabled = false,
 }: {
   items: InboxItem[];
   onRefresh: () => Promise<void>;
   onExit: () => void;
   onAnswered?: (message: string) => void;
+  modelEnabled?: boolean;
+  summaryEnabled?: boolean;
 }) {
   const [lane, setLane] = useState<Lane>(items.length > 0 ? "questions" : "proposals");
   const [handled, setHandled] = useState<Set<string>>(() => new Set());
@@ -123,18 +130,25 @@ export default function FocusMode({
     setMessage("Left in your inbox for later.");
   };
 
-  const steer = async (session: SteeringSession, edge: Edge) => {
-    if (steeringBusy || session.locked || session.pending_steer) return;
-    const direction = directionsFor(session).find((candidate) => candidate.edge === edge);
-    if (!direction) return;
+  const steer = async (session: SteeringSession, edge: Edge | null, requestText?: string) => {
+    if (steeringBusy || session.locked || session.pending_steer) return false;
+    const direction = edge ? directionsFor(session).find((candidate) => candidate.edge === edge) : null;
+    const text = requestText?.trim();
+    if ((edge && !direction) || (!edge && !text)) return false;
     setSteeringBusy(true);
     setMessage("");
     try {
-      await api.steerSession(session.id, edge, 0.75);
-      setMessage(`Steered gently: ${direction.label}. Waiting for ${session.agent?.name ?? "the agent"} to revise.`);
+      await api.steerSession(session.id, text
+        ? { request_text: text }
+        : { edge: edge!, magnitude: 0.75 });
+      setMessage(text
+        ? `Your request was sent to ${session.agent?.name ?? "the agent"}. Nothing has been approved.`
+        : `Change request sent: ${direction!.label}. Waiting for ${session.agent?.name ?? "the agent"} to revise.`);
       await loadSessions();
+      return true;
     } catch {
       setMessage("That steer was refused. Nothing was sent.");
+      return false;
     } finally {
       setSteeringBusy(false);
     }
@@ -147,7 +161,7 @@ export default function FocusMode({
     try {
       await api.resolveSteering(session.id, outcome);
       setMessage(outcome === "accepted"
-        ? `Accepted version ${session.version}. The agent has the final version.`
+        ? `Draft approved. ${session.agent?.name ?? "The agent"} can proceed.`
         : "Rejected. The agent has been told no.");
       await loadSessions();
     } catch {
@@ -299,7 +313,7 @@ export default function FocusMode({
               <span>{sessions.length} proposal{sessions.length === 1 ? "" : "s"} to review</span>
               <span>Steering never approves an action.</span>
             </div>
-            <article key={activeProposal.id} className="focus-card proposal-focus-card" style={{
+            <article key={`${activeProposal.id}:${activeProposal.version}`} className="focus-card proposal-focus-card" style={{
               transform: proposalDragX ? `translateX(${proposalDragX}px) rotate(${proposalDragX * 0.018}deg)` : undefined,
               transition: drag?.id === activeProposal.id ? "none" : undefined,
               background: proposalDragX ? `linear-gradient(${proposalDragX > 0 ? "90deg" : "270deg"}, color-mix(in srgb, var(--blue) ${Math.min(15, Math.abs(proposalDragX) / 8)}%, var(--panel)), var(--panel) 72%)` : undefined,
@@ -320,11 +334,12 @@ export default function FocusMode({
                 <span className="cat">{activeProposal.category}</span>
                 <span>{activeProposal.agent?.name ?? "Agent"}</span>
                 {activeProposal.project && <span className="project-chip">{activeProposal.project}</span>}
-                <span>Version {activeProposal.version}</span>
+                <span>Current draft</span>
               </div>
               <h3>{activeProposal.title}</h3>
-              <pre className="focus-proposal-text">{activeProposal.proposal_text}</pre>
-              {activeProposal.pending_steer && <div className="callout">Steer sent: “{activeProposal.pending_steer.label}”. Waiting for a revision.</div>}
+              <div className="focus-proposal-text"><ProposalBody session={activeProposal} /></div>
+              <RevisionSummary key={`${activeProposal.id}:${activeProposal.version}`} session={activeProposal} modelEnabled={summaryEnabled} />
+              {activeProposal.pending_steer && <div className="callout">Change request sent: “{activeProposal.pending_steer.request_text ?? activeProposal.pending_steer.label}”. Waiting for a revision.</div>}
               {activeProposal.locked ? (
                 <div className="locked-box">This category is locked. Proposals here cannot be steered or accepted.</div>
               ) : (
@@ -337,11 +352,14 @@ export default function FocusMode({
                       </button>
                     ))}
                   </div>
-                  <p className="focus-gesture-hint">A swipe can request a left/right revision. Acceptance is always a separate tap.</p>
+                  <AdaptiveSteer key={`${activeProposal.id}:${activeProposal.version}`} sessionId={activeProposal.id} modelEnabled={modelEnabled}
+                    disabled={steeringBusy || Boolean(activeProposal.pending_steer)}
+                    onSend={(text) => steer(activeProposal, null, text)} />
+                  <p className="focus-gesture-hint">Swipe left or right to request a change. Approve the draft explicitly to let the agent act.</p>
                   <div className="focus-actions">
                     <button className="primary" disabled={steeringBusy || Boolean(activeProposal.pending_steer)}
-                      onClick={() => void resolve(activeProposal, "accepted")}>Accept version {activeProposal.version}</button>
-                    <button disabled={steeringBusy} onClick={() => void resolve(activeProposal, "rejected")}>Reject</button>
+                      onClick={() => void resolve(activeProposal, "accepted")}>Approve this draft</button>
+                    <button disabled={steeringBusy} onClick={() => void resolve(activeProposal, "rejected")}>Reject proposal</button>
                   </div>
                 </>
               )}
