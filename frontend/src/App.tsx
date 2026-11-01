@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import { subscribeStream } from "./stream";
+import BrandMark from "./components/BrandMark";
 import DecisionStage from "./components/DecisionStage";
 import EvaluationPanel from "./components/Evaluation";
 import FocusMode from "./components/FocusMode";
@@ -243,12 +244,7 @@ export default function App() {
   return (
     <>
       <header>
-        <div className="logo">
-          <i className="on" />
-          <i />
-          <i />
-          <i className="on" />
-        </div>
+        <BrandMark className="header-mark" />
         <h1>
           Switch<em>board</em>
         </h1>
@@ -299,7 +295,7 @@ export default function App() {
           <div className="desk-routing" aria-hidden="true">
             <div className="route-agents"><i /><i /><i /><span>AGENTS</span></div>
             <span className="route-wire" />
-            <div className="route-hub">S<span>B</span></div>
+            <BrandMark className="route-hub-mark" />
             <span className="route-wire" />
             <div className="route-person"><b>YOU</b><i /></div>
           </div>
