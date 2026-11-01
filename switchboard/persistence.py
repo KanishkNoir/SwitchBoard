@@ -1,6 +1,7 @@
 import json
 import os
 import sqlite3
+import threading
 import time
 import uuid
 from datetime import datetime, timezone
@@ -155,6 +156,10 @@ class Store:
         # Generous busy timeout: on a network volume a checkpoint can stall
         # behind another container's stop/commit; fail loudly, never wedge.
         self.conn = sqlite3.connect(db_path, check_same_thread=False, timeout=30.0)
+        # Modal can serve concurrent ASGI inputs in one container. Serialize
+        # access to this shared SQLite connection while keeping long-lived
+        # async streams outside the database lock.
+        self._lock = threading.RLock()
         self.conn.row_factory = sqlite3.Row
         # Every mutating execute bumps the generation: read caches key on it,
         # so a write can never be followed by a stale read from this store.
@@ -182,30 +187,35 @@ class Store:
     def _timed(self, sql, params, mutating: bool):
         t0 = time.perf_counter()
         try:
-            cur = self.conn.execute(sql, params)
-            if mutating:
-                self.conn.commit()
-                self.write_seq += 1
+            with self._lock:
+                cur = self.conn.execute(sql, params)
+                if mutating:
+                    self.conn.commit()
+                    self.write_seq += 1
             return cur
         finally:
-            _record(self, (time.perf_counter() - t0) * 1000.0)
+            with self._lock:
+                _record(self, (time.perf_counter() - t0) * 1000.0)
 
     def execute(self, sql, params=(), count=True):
         # count=False is reserved for append-only audit writes (e.g. the
         # passport history table) that no read endpoint depends on: they must
         # not invalidate the read cache they are computed alongside.
-        if not count:
-            cur = self._timed(sql, params, mutating=True)
-            self.write_seq -= 1
-            return cur
-        return self._timed(sql, params, mutating=True)
+        with self._lock:
+            if not count:
+                cur = self._timed(sql, params, mutating=True)
+                self.write_seq -= 1
+                return cur
+            return self._timed(sql, params, mutating=True)
 
     def query(self, sql, params=()):
-        return [dict(r) for r in self._timed(sql, params, mutating=False).fetchall()]
+        with self._lock:
+            return [dict(r) for r in self._timed(sql, params, mutating=False).fetchall()]
 
     def query_one(self, sql, params=()):
-        row = self._timed(sql, params, mutating=False).fetchone()
-        return dict(row) if row else None
+        with self._lock:
+            row = self._timed(sql, params, mutating=False).fetchone()
+            return dict(row) if row else None
 
     def emit(self, actor_type, actor_id, event_type, object_type, object_id,
              payload=None, evidence_class=None, correlation_id=None):

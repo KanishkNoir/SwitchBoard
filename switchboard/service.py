@@ -53,6 +53,13 @@ class SwitchboardService:
             raise SwitchboardError("UNAUTHENTICATED")
         return row
 
+    def authenticate_agent_id(self, agent_id: str):
+        """Resolve a previously authenticated OAuth principal, honoring revocation."""
+        row = self.store.query_one("SELECT * FROM agents WHERE id=? AND enabled=1", (agent_id,))
+        if not row:
+            raise SwitchboardError("UNAUTHENTICATED")
+        return row
+
     def list_agents(self):
         return self.store.query(
             "SELECT id,name,kind,scopes_json,enabled,created_at FROM agents ORDER BY created_at")
@@ -317,6 +324,31 @@ class SwitchboardService:
                                           candidate, False, scope_result)
         return self._persist_decision(qid, req, cat, "deferred", "below_policy",
                                       candidate["tier"] if candidate else "none", candidate, True, scope_result)
+
+    def action_request_status(self, agent, question_id: str, expected_intent="action_review") -> dict:
+        """Return a human's one-time answer for a question owned by this agent."""
+        question = self.store.query_one(
+            "SELECT id,agent_id,intent_type FROM questions WHERE id=?", (question_id,)
+        )
+        if not question or question["agent_id"] != agent["id"]:
+            raise SwitchboardError("NOT_FOUND", "action request")
+        if expected_intent and question["intent_type"] != expected_intent:
+            raise SwitchboardError("INVALID_SCHEMA", "question is not an action review")
+        answered = self.store.query_one(
+            "SELECT d.id AS decision_id,d.answer_json,r.id AS receipt_id "
+            "FROM decisions d LEFT JOIN receipts r ON r.decision_id=d.id "
+            "WHERE d.question_id=? AND d.mode='human' ORDER BY d.created_at DESC LIMIT 1",
+            (question_id,),
+        )
+        if not answered:
+            return {"status": "pending", "question_id": question_id}
+        return {
+            "status": "answered",
+            "question_id": question_id,
+            "decision_id": answered["decision_id"],
+            "receipt_id": answered["receipt_id"],
+            "answer": json.loads(answered["answer_json"] or "{}"),
+        }
 
     def _persist_decision(self, qid, req, cat, mode, reason, tier, candidate, human, scope_result=None):
         # Atomicity guard: re-check the candidate version is still active at persistence time.

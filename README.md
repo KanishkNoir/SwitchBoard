@@ -153,7 +153,11 @@ $env:SWITCHBOARD_MCP_TRANSPORT = "streamable-http"  # http://127.0.0.1:8766/mcp
 uv run python -m switchboard.mcp_server
 ```
 
-MCP tools: `ask`, `get_rules`, `report_outcome`, `record_use`. Agent identity comes from credentials, never from payload JSON. A workspace `.mcp.json` is included for MCP-compatible clients, and a working demo harness lives in `harness/`.
+MCP tools: `ask`, `get_rules`, `get_action_request_status`, `report_outcome`, and `record_use`. Agent identity comes from credentials, never from payload JSON. A workspace `.mcp.json` is included for MCP-compatible clients, and a working demo harness lives in `harness/`.
+
+For an automatic OpenCode pre-tool gate, see [integrations/OPENCODE_ACTION_GATE.md](integrations/OPENCODE_ACTION_GATE.md). It blocks non-read-only tool calls until Switchboard returns an explicit allow.
+
+For an automatic Claude Code pre-tool gate, see [integrations/CLAUDE_CODE_ACTION_GATE.md](integrations/CLAUDE_CODE_ACTION_GATE.md). It routes state-changing calls and user questions through Switchboard.
 
 For frontend development:
 

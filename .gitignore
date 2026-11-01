@@ -2,6 +2,7 @@
 .uv-cache/
 .uv-python/
 __pycache__/
+.tmp/
 *.pyc
 .env
 *.db

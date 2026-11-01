@@ -803,7 +803,7 @@ dev = [
 requires-dist = [
     { name = "fastapi", specifier = ">=0.115" },
     { name = "httpx", specifier = ">=0.27" },
-    { name = "mcp", specifier = ">=1.9" },
+    { name = "mcp", specifier = ">=2.3,<3" },
     { name = "meta-sam-parser", specifier = ">=0.0.4" },
     { name = "pydantic", specifier = ">=2.7" },
     { name = "uvicorn", specifier = ">=0.30" },

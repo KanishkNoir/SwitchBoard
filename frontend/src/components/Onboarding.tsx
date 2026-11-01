@@ -82,7 +82,7 @@ export function OnboardingWizard({ state, onDone }: { state: OnboardingState; on
           <p className="prose">
             Pick an error budget for answers Switchboard may one day give on its own.
             It's a target the risk gate measures against — never a guarantee — and you
-            you choose it here, during setup.
+            choose it here, during setup.
           </p>
           <div style={{ display: "grid", gap: 8 }}>
             {RISKS.map((r) => (

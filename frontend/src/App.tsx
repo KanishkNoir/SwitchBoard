@@ -3,6 +3,7 @@ import { api } from "./api";
 import { subscribeStream } from "./stream";
 import DecisionStage from "./components/DecisionStage";
 import EvaluationPanel from "./components/Evaluation";
+import FocusMode from "./components/FocusMode";
 import { AgentsPanel, RulesPanel } from "./components/Manage";
 import { AttentionAlerts, DebriefPanel, InboxPanel, ObjectsPanel, PassportPanel } from "./components/Panels";
 import { OnboardingWizard } from "./components/Onboarding";
@@ -26,6 +27,7 @@ export default function App() {
   const [out, setOut] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [view, setView] = useState<"decision" | "manage" | "evaluation" | "debrief">("decision");
+  const [focusMode, setFocusMode] = useState(false);
   const [onboarding, setOnboarding] = useState<OnboardingState | null>(null);
   const [wizardDismissed, setWizardDismissed] = useState(false);
   const [showDemo, setShowDemo] = useState(false);
@@ -37,6 +39,7 @@ export default function App() {
   const [missingCaps, setMissingCaps] = useState<string[] | null>(null);
   const [inboxError, setInboxError] = useState(false);
   const [onboardingFailed, setOnboardingFailed] = useState(false);
+  const onboardingPending = Boolean(onboarding && !onboarding.completed && !wizardDismissed);
 
   useEffect(() => {
     api.onboarding().then((s) => { setOnboarding(s); setOnboardingFailed(false); })
@@ -268,7 +271,7 @@ export default function App() {
         </div>
       </header>
 
-      <nav className="viewtabs">
+      {!onboardingPending && !focusMode && <nav className="viewtabs">
         <div className="seg" role="tablist" aria-label="Views" ref={segRef}>
           <span
             className="seg-ink"
@@ -285,8 +288,8 @@ export default function App() {
           </button>
         </div>
         {notice && <span className="notice">{notice}</span>}
-      </nav>
-      {view === "decision" && (
+      </nav>}
+      {!focusMode && view === "decision" && (
         <section className="desk-hero" aria-label="Switchboard decision desk">
           <div className="desk-copy">
             <span className="desk-kicker"><i /> CROSS-AGENT DECISION CONTROL</span>
@@ -313,17 +316,28 @@ export default function App() {
           Setup state couldn't be loaded — showing defaults. Retry from Refresh below.
         </div>
       )}
-      {view === "decision" && (inbox.length > 0 || steeringCount > 0) && (
+      {!focusMode && !onboardingPending && view === "decision" && (inbox.length > 0 || steeringCount > 0) && (
         <div className="status-strip">
           {inbox.length > 0 && <span>{inbox.length} waiting on you</span>}
           {steeringCount > 0 && <span>{steeringCount} proposal{steeringCount > 1 ? "s" : ""} to steer</span>}
           {inbox.length === 0 && steeringCount > 0 && <span>nothing blocking — steer when ready</span>}
+          <button className="focus-launch" onClick={() => setFocusMode(true)}>Start focus <span aria-hidden="true">→</span></button>
         </div>
       )}
       {onboarding && !onboarding.completed && !wizardDismissed ? (
         <main className="view-morph" style={{ gridTemplateColumns: "minmax(0, 640px)", justifyContent: "center" }}>
           <OnboardingWizard state={onboarding} onDone={() => setWizardDismissed(true)} />
         </main>
+      ) : focusMode ? (
+        <FocusMode
+          items={inbox}
+          onRefresh={loadInbox}
+          onExit={() => setFocusMode(false)}
+          onAnswered={(m) => {
+            setNotice(m);
+            setTimeout(() => setNotice(""), 6000);
+          }}
+        />
       ) : view === "debrief" ? (
         <main className="view-morph" style={{ gridTemplateColumns: "1fr" }}>
           <div>

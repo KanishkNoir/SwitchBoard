@@ -5,6 +5,7 @@ import type { AgentRow, BlastItem, RuleRow } from "../types";
 export function AgentsPanel() {
   const [agents, setAgents] = useState<AgentRow[]>([]);
   const [name, setName] = useState("");
+  const [filter, setFilter] = useState("");
   const [newKey, setNewKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,17 +32,31 @@ export function AgentsPanel() {
     }
   };
 
+  const visibleAgents = agents.filter((a) =>
+    `${a.name} ${a.kind} ${a.id}`.toLowerCase().includes(filter.trim().toLowerCase())
+  );
+
   return (
     <div className="panel">
       <div className="panel-head">
         <h2>Compatible agents</h2>
+        <span className="agent-count">{agents.length} registered</span>
         <button onClick={load}>Refresh</button>
       </div>
       {error && <div className="empty">{error}</div>}
       {agents.length === 0 && !error && (
         <div className="empty">No agents registered. An agent key identifies a caller — it never grants rule-writing rights.</div>
       )}
-      {agents.map((a) => (
+      {agents.length > 0 && (
+        <label className="agent-filter">
+          <span>Find an agent</span>
+          <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Name, kind, or ID" />
+        </label>
+      )}
+      {agents.length > 0 && visibleAgents.length === 0 && (
+        <div className="empty">No registered agents match “{filter}”.</div>
+      )}
+      {visibleAgents.map((a) => (
         <div className="item" key={a.id}>
           <span className="cat">{a.kind}</span>
           <span className="pri">{a.enabled ? "enabled" : "disabled"}</span>

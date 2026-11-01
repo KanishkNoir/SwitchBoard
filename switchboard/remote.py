@@ -24,11 +24,21 @@ class HubClient:
                 "request_id": req.request_id, "question": req.question,
                 "category": req.category, "intent_type": req.intent_type,
                 "reversibility": req.reversibility, "context": req.context or {},
-                "options": req.options or []})
+                "options": req.options or [], "action": req.action,
+                "parent_receipts": req.parent_receipts or []})
         except Exception:
             return {"decision": "defer", "answer": None,
                     "reason_code": "hub_unreachable", "receipt_id": None,
                     "question_id": None, "decision_id": None, "rule_versions": []}
+
+    def action_request_status(self, question_id: str) -> dict:
+        try:
+            response = self._client.get(f"/api/action-requests/{question_id}")
+            response.raise_for_status()
+            return response.json()
+        except Exception:
+            return {"status": "unavailable", "question_id": question_id,
+                    "reason_code": "hub_unreachable"}
 
     def get_rules(self, category=None) -> list:
         try:

@@ -122,7 +122,7 @@ class AskIn(BaseModel):
 # stale server can never pose as a compatible one. Add a name here whenever a
 # UI surface depends on a new backend route.
 API_CAPABILITIES = ["inbox", "steering", "debrief", "onboarding", "taste",
-                    "simulation", "passport", "notices", "resolve"]
+                    "simulation", "passport", "notices", "resolve", "action_gate"]
 
 
 @app.get("/health")
@@ -149,6 +149,24 @@ def ask(body: AskIn, x_agent_key: str | None = Header(default=None)):
         resp = svc.ask(agent, QuestionRequest(**body.model_dump()))
         _notify("question")
         return resp
+    except SwitchboardError as e:
+        return err(e)
+
+
+@app.get("/api/action-requests/{question_id}")
+def action_request_status(question_id: str, x_agent_key: str | None = Header(default=None)):
+    agent = agent_from(x_agent_key)
+    try:
+        return svc.action_request_status(agent, question_id)
+    except SwitchboardError as e:
+        return err(e)
+
+
+@app.get("/api/questions/{question_id}/answer")
+def question_answer_status(question_id: str, x_agent_key: str | None = Header(default=None)):
+    agent = agent_from(x_agent_key)
+    try:
+        return svc.action_request_status(agent, question_id, expected_intent=None)
     except SwitchboardError as e:
         return err(e)
 

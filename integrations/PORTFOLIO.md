@@ -18,9 +18,9 @@ Verification levels:
 | Agent | Type | Config we generate | Status |
 |---|---|---|---|
 | Muse Code | coding (Meta) | `mcpServers` block in `~/.config/muse/settings.json` | **verified live on the hub (1.4.14): headless run called `ask` via `--remote` config, question recorded in the Modal inbox as `muse-code-hub`** |
-| Claude Code | coding | `.mcp.json` (workspace) | discovered in `claude mcp list`; pending user approval; print-mode blocked by org policy |
+| Claude Code | coding | `.mcp.json` + `.claude/settings.local.json` PreToolUse hook | **automatic action gate configured and read-only hook path smoke-checked; hub route live; pending Claude Code restart and live action-path confirmation** |
 | Codex CLI | coding | `~/.codex/config.toml` `[mcp_servers]` | registered + enabled in `codex mcp list`; needs `codex login` for live use |
-| OpenCode | coding (OSS) | `opencode.json` `mcp` | **verified live: free model `opencode/big-pickle` called `ask`, decision recorded in ledger; `opencode mcp list` shows switchboard connected** |
+| OpenCode | coding (OSS) | `opencode.json` `mcp` + `.opencode/plugins/switchboard-gate.js` | **MCP verified live; automatic pre-tool gate implemented, pending OpenCode restart and action-path confirmation** |
 | Antigravity | coding/general | MCP config | candidate |
 
 ## Tier 2 — under an hour, config or bridge
@@ -29,17 +29,18 @@ Verification levels:
 |---|---|---|---|
 | Cursor | IDE coding | `.cursor/mcp.json` | config generated + placed in demo project; app not installed here |
 | Claude Desktop | desktop assistant | `claude_desktop_config.json` | **protocol-verified with the installed config at %APPDATA%\Claude (dedicated `claude-desktop` agent, pinned ledger paths); restart the app to pick it up** |
-| ChatGPT desktop/web | desktop assistant | remote MCP app (Developer Mode) | **retired 2026-10-30: endpoint removed (no paid plan; unused attack surface). Rebuild = re-add the `mcp_api` ASGI function to modal_app.py; local MCP clients never used it** |
+| Claude mobile | mobile assistant | remote MCP connector | **connected in Claude; waiting for first successful tool call to mark protocol-verified** |
+| ChatGPT web | desktop assistant | remote MCP app | **implementation ready for web after Modal deployment; availability and write access depend on ChatGPT plan/workspace** |
+| ChatGPT mobile | mobile assistant | custom MCP app | **unsupported by ChatGPT mobile as of 2026-10-31; custom MCP apps are web-only** |
 | Hermes Agent | personal assistant | `~/.hermes/config.yaml` `mcp_servers:` | **verified live on the hub: runs on Baseten `meta-models/muse-spark-open-1026` (openai-api provider + OPENAI_BASE_URL), called `ask`, question recorded in the Modal inbox as `hermes-hub`; startup needs edge-tts preinstalled in its venv and direct venv-python spawn (uv cache ACL)** |
 | OpenClaw | personal assistant | `~/.openclaw/openclaw.json` `mcp.servers` | installed; `openclaw mcp list/show` verifies config; live run needs model setup |
 | Cline / Roo Code | VS Code coding | VS Code MCP settings JSON | candidate |
 | Windsurf | IDE coding | `~/.codeium/windsurf/mcp_config.json` | candidate |
 
-> Parked by decision: harness expansion stops here. The pattern is proven —
-> any MCP-capable agent works by generating its config with `switchboard.onboard`
-> (local stdio, or `--remote` for the device-agnostic hub), registering one
-> agent key, and adding the ask-first rule to its instructions. Remaining
-> candidates need no new engineering, only per-app config placement.
+MCP-capable agents can use `switchboard.onboard` (local stdio or `--remote` for
+the device-agnostic hub), register one agent key, and add the ask-first rule to
+their instructions. Each adapter's enforcement status is tracked separately
+above.
 
 ## Tier 3 — advisory only (closed harnesses)
 
