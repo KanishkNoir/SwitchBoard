@@ -216,7 +216,7 @@ export function InboxPanel({
   };
 
   return (
-    <div className="panel">
+    <div className="panel inbox-panel">
       <div className="panel-head">
         <h2>Waiting on you</h2>
         <button onClick={onRefresh}>Refresh</button>
@@ -489,6 +489,7 @@ const BUCKETS: { key: string; title: string; color: string }[] = [
 export function DebriefPanel({ onGoToDecide }: { onGoToDecide?: () => void }) {
   const [rows, setRows] = useState<import("../types").DebriefRow[]>([]);
   const [loadError, setLoadError] = useState(false);
+  const visibleRows = rows.filter((row) => row.bucket !== "still_waiting");
   const load = useCallback(async () => {
     try {
       setRows(await api.debrief());
@@ -524,16 +525,16 @@ export function DebriefPanel({ onGoToDecide }: { onGoToDecide?: () => void }) {
           <p>This is a connection problem — your trail is still on the server.</p>
           <button className="linkbtn" onClick={load}>Retry</button>
         </div>
-      ) : rows.length === 0 && (
+      ) : visibleRows.length === 0 && (
         <div className="history-empty">
           <span className="history-empty-kicker">YOUR DECISION TRAIL</span>
           <h3>No decisions to review yet.</h3>
-          <p>Once you answer a question or a rule handles one, its reason and receipt will appear here.</p>
+          <p>Open requests are still waiting on you. Once you answer one or a rule handles it, its reason and receipt will appear here.</p>
           {onGoToDecide && <button className="linkbtn" onClick={onGoToDecide}>Go to the decision desk →</button>}
         </div>
       )}
       {BUCKETS.map((b) => {
-        const group = rows.filter((r) => r.bucket === b.key);
+        const group = visibleRows.filter((r) => r.bucket === b.key);
         if (!group.length) return null;
         return (
           <div key={b.key} style={{ marginBottom: 16 }}>
@@ -567,6 +568,49 @@ export function DebriefPanel({ onGoToDecide }: { onGoToDecide?: () => void }) {
   );
 }
 
+function passportLabel(value: string): string {
+  return value.replace(/_/g, " ").replace(/^\w/, (letter) => letter.toUpperCase());
+}
+
+function passportStageLabel(passport: Passport): string {
+  if (passport.locked) return "Always ask you";
+  switch (passport.stage) {
+    case "auto": return "Can act automatically";
+    case "warn": return "Can act with a heads-up";
+    case "suggest": return "Suggests first";
+    default: return "Still asks you";
+  }
+}
+
+function passportStageCopy(passport: Passport): string {
+  if (passport.locked) return "You approve every action in this category.";
+  switch (passport.stage) {
+    case "auto": return "Only when one of your rules matches.";
+    case "warn": return "A matching rule can act, and you can still step in.";
+    case "suggest": return "You approve each action before it happens.";
+    default: return "It watches for matches but waits for your approval.";
+  }
+}
+
+function evidenceLabel(value: string): string {
+  switch (value) {
+    case "ok": return "Ready";
+    case "recalibration_pending": return "Reviewing changes";
+    case "quarantined": return "Needs review";
+    case "insufficient_evidence": return "Needs more examples";
+    default: return passportLabel(value);
+  }
+}
+
+function riskCheckLabel(value: string): string {
+  switch (value) {
+    case "insufficient_evidence": return "Not enough examples yet";
+    case "would_block": return "Above the mistake goal";
+    case "within_target": return "Within the mistake goal";
+    default: return passportLabel(value);
+  }
+}
+
 export function PassportPanel() {
   const [category, setCategory] = useState("purchase");
   const [chips, setChips] = useState<string[]>(["purchase"]);
@@ -594,76 +638,94 @@ export function PassportPanel() {
   }, []);
 
   return (
-    <div className="panel">
-      <div className="panel-head">
-        <h2>Autonomy passport</h2>
+    <section className="panel passport-panel" aria-labelledby="passport-title">
+      <div className="passport-heading">
+        <div>
+          <span className="passport-eyebrow">AUTONOMY PASSPORT</span>
+          <h2 id="passport-title">What agents can do</h2>
+        </div>
+        <span className="passport-mark" aria-hidden="true">↗</span>
       </div>
-      <div className="taprow" style={{ marginBottom: 12 }}>
+      <div className="passport-categories" role="tablist" aria-label="Passport category">
         {chips.map((c) => (
           <button
             key={c}
-            className={c === category ? "chip active" : "chip"}
+            className={c === category ? "passport-category active" : "passport-category"}
+            role="tab"
+            aria-selected={c === category}
             onClick={() => { setCategory(c); load(c); }}
           >
             {c}
           </button>
         ))}
       </div>
-      {error && <div className="empty">{error}</div>}
+      {error && <div className="passport-error" role="alert">{error}</div>}
       {!passport && !error && (
-        <div className="empty">
-          Pick a category to see why it is allowed to act — or why it still has to ask.
-        </div>
+        <div className="passport-loading" role="status">Loading category policy…</div>
       )}
       {passport && (
-        <>
-          <div style={{ marginBottom: 10 }}>
-            <span className="pill">
-              {passport.category} · {passport.stage}
-              {passport.locked ? " · locked" : ""}
-            </span>
+        <div className="passport-content" role="tabpanel" aria-label={`${passport.category} policy`}>
+          <div className={`passport-stage${passport.locked ? " is-locked" : ""}`}>
+            <div>
+              <span className="passport-label">{passport.category}</span>
+              <strong>{passportStageLabel(passport)}</strong>
+              <p>{passportStageCopy(passport)}</p>
+            </div>
+            {passport.locked && <span className="passport-stage-badge">ALWAYS ASK</span>}
           </div>
-          <dl className="kv">
-            <dt>Preference epoch</dt>
-            <dd>{passport.preference_epoch}</dd>
-            <dt>Risk target</dt>
-            <dd>{passport.risk_target} (policy goal, not a guarantee)</dd>
-            <dt>Evidence state</dt>
-            <dd>{passport.evidence_state}</dd>
-            <dt>Gold samples</dt>
-            <dd>{passport.gold_sample_count} human-confirmed</dd>
-            {passport.risk_gate && (
-              <>
-                <dt>Risk gate (shadow)</dt>
-                <dd>
-                  {passport.risk_gate.gate_state}
-                  {passport.risk_gate.wilson_upper !== null &&
-                    ` · upper bound ${(passport.risk_gate.wilson_upper * 100).toFixed(1)}%`}
-                  {passport.risk_gate.labels_needed > 0 &&
-                    ` · ${passport.risk_gate.labels_needed} more human labels before enforcement can be considered`}
-                  {" "}· measuring only, never blocks
-                </dd>
-              </>
-            )}
-            {passport.taste && passport.taste.length > 0 && (
-              <>
-                <dt>How you steer</dt>
-                <dd>
-                  {passport.taste.map(([label, n]) => `${label} ×${n}`).join(" · ")}
-                  {" "}— your leans here, mirrored back; never a rule.
-                </dd>
-              </>
-            )}
-            <dt>Policy version</dt>
-            <dd>{passport.policy_version}</dd>
-          </dl>
-          <div className="note">
-            {passport.limitations.map((l) => (
-              <div key={l}>{l}</div>
-            ))}
+
+          <div className="passport-metrics">
+            <div className="passport-metric">
+              <span className="passport-label">MISTAKE-RATE GOAL</span>
+              <strong>{(passport.risk_target * 100).toLocaleString(undefined, { maximumFractionDigits: 1 })}%</strong>
+              <small>A goal, not a promise</small>
+            </div>
+            <div className="passport-metric">
+              <span className="passport-label">EXAMPLES YOU CHECKED</span>
+              <strong>{passport.gold_sample_count}</strong>
+              <small>{evidenceLabel(passport.evidence_state)}</small>
+            </div>
           </div>
-        </>
+
+          {passport.risk_gate && (
+            <div className="passport-gate">
+              <div className="passport-gate-heading">
+                <span className="passport-gate-dot" aria-hidden="true" />
+                <strong>Mistake check</strong>
+                <span className="passport-gate-state">{riskCheckLabel(passport.risk_gate.gate_state)}</span>
+              </div>
+              <p>
+                {passport.risk_gate.labels_needed > 0
+                  ? `We need ${passport.risk_gate.labels_needed} more decisions you have checked to estimate mistakes.`
+                  : "There are enough checked decisions to estimate mistakes."}
+              </p>
+              <small>This only tracks results. It never stops an action.</small>
+            </div>
+          )}
+
+          {passport.taste && passport.taste.length > 0 && (
+            <div className="passport-taste">
+              <span className="passport-label">WHAT YOU TEND TO PREFER</span>
+              <strong>{passport.taste.map(([label, n]) => `${label} ×${n}`).join(" · ")}</strong>
+              <small>A reflection of your choices, not a rule or permission.</small>
+            </div>
+          )}
+
+          {passport.limitations.length > 0 && (
+            <details className="passport-limits">
+              <summary>How to read these numbers</summary>
+              <p>Past results can’t promise what will happen next. This check only measures; it does not control actions.</p>
+              <ul>
+                {passport.limitations.map((limitation) => <li key={limitation}>{limitation}</li>)}
+              </ul>
+              <div className="passport-meta">
+                <span><small>Preference record</small><strong>{passport.preference_epoch}</strong></span>
+                <span><small>Policy record</small><strong>{passport.policy_version}</strong></span>
+              </div>
+            </details>
+          )}
+        </div>
       )}
-    </div>
+    </section>
   );
 }

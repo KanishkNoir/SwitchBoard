@@ -2,15 +2,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { subscribeStream } from "../stream";
 import type { Edge, SteeringSession } from "../types";
-
-const ARROW: Record<Edge, string> = { top: "↑", left: "←", right: "→", bottom: "↓" };
+import AdaptiveSteer from "./AdaptiveSteer";
+import ProposalBody from "./ProposalBody";
+import RevisionSummary from "./RevisionSummary";
 
 const TRAJECTORY_TEXT: Record<string, string> = {
-  "steering.proposal_submitted": "Agent submitted a proposal",
-  "steering.applied": "You steered",
-  "steering.proposal_revised": "Agent revised the proposal",
-  "steering.accepted": "You accepted it",
-  "steering.rejected": "You rejected it",
+  "steering.proposal_submitted": "Agent shared a draft",
+  "steering.applied": "You asked for a change",
+  "steering.proposal_revised": "Agent updated the draft",
+  "steering.accepted": "You approved the draft",
+  "steering.rejected": "You rejected the draft",
 };
 
 const TRAJECTORY_COLOR: Record<string, string> = {
@@ -21,32 +22,11 @@ const TRAJECTORY_COLOR: Record<string, string> = {
   "steering.rejected": "var(--red, #d70015)",
 };
 
-function sentences(text: string): string[] {
-  return text.split(/(?<=[.!?])\s+|\n/).map((s) => s.trim()).filter(Boolean);
-}
-
-/** Current proposal with sentences that are new in this version highlighted. */
-function ProposalBody({ session }: { session: SteeringSession }) {
-  const revs = session.revisions;
-  const prev = revs.length > 1 ? revs[revs.length - 2].proposal_text : null;
-  if (!prev) return <>{session.proposal_text}</>;
-  const before = new Set(sentences(prev).map((s) => s.toLowerCase()));
-  return (
-    <>
-      {sentences(session.proposal_text).map((s, i) =>
-        before.has(s.toLowerCase()) ? (
-          <span key={i}>{s} </span>
-        ) : (
-          <mark key={i} className="rev-new">{s} </mark>
-        )
-      )}
-    </>
-  );
-}
-
-export default function SteeringPanel({ onEvent, onCount }: {
+export default function SteeringPanel({ onEvent, onCount, modelEnabled = false, summaryEnabled = false }: {
   onEvent?: (msg: string) => void;
   onCount?: (n: number) => void;
+  modelEnabled?: boolean;
+  summaryEnabled?: boolean;
 }) {
   const [sessions, setSessions] = useState<SteeringSession[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -55,13 +35,22 @@ export default function SteeringPanel({ onEvent, onCount }: {
   const [loadError, setLoadError] = useState(false);
   const touch = useRef<{ x: number; y: number } | null>(null);
   const lastHash = useRef("");
+  const seenVersion = useRef<Record<string, number>>({});
 
   const load = useCallback(async () => {
     try {
       const list = await api.steering();
       setLoadError(false);
       // Unchanged payloads never touch state: no re-render, no list churn.
-      const h = JSON.stringify(list.map((s) => [s.id, s.version, s.status, s.updated_at]));
+      const h = JSON.stringify(list.map((s) => [
+        s.id,
+        s.version,
+        s.status,
+        s.updated_at,
+        s.pending_steer,
+        s.trajectory.length,
+        s.trajectory[s.trajectory.length - 1]?.event,
+      ]));
       if (h === lastHash.current) return;
       lastHash.current = h;
       setSessions(list);
@@ -87,33 +76,42 @@ export default function SteeringPanel({ onEvent, onCount }: {
 
   // Magnitude is per-proposal, per-moment — never sticky across sessions.
   useEffect(() => { setStrong(false); }, [activeId]);
-
+  useEffect(() => { setMsg(""); }, [activeId]);
   const active = sessions.find((s) => s.id === activeId) ?? sessions[0] ?? null;
   const waiting = Boolean(active?.pending_steer);
   const isExample = active?.agent?.name === "switchboard_demo";
+  const isSample = active?.agent?.kind === "simulation" || isExample;
 
-  // "v2 → v3: Cheaper applied" — from the trajectory, at Accept time.
-  const changeChip = (() => {
-    if (!active || active.version < 2) return null;
-    const applied = [...active.trajectory].reverse().find((t) => t.event === "steering.applied");
-    return applied?.label
-      ? `v${active.version - 1} → v${active.version}: ${applied.label} applied`
-      : `Now at v${active.version}`;
-  })();
+  useEffect(() => {
+    if (!active) return;
+    const previous = seenVersion.current[active.id];
+    if (previous !== undefined && active.version > previous) {
+      setMsg("The agent updated the draft. Review it before approving.");
+    }
+    seenVersion.current[active.id] = active.version;
+  }, [active?.id, active?.version]);
 
-  const steer = async (edge: Edge) => {
-    if (!active || active.locked) return;
-    const d = active.directions.find((x) => x.edge === edge);
-    if (!d) return; // never fire a direction the agent did not declare
+  const steer = async (edge: Edge | null, requestText?: string) => {
+    if (!active || active.locked || waiting) return false;
+    const text = requestText?.trim();
+    const d = edge ? active.directions.find((x) => x.edge === edge) : null;
+    if (edge && !d) return false; // never fire a direction the agent did not declare
+    if (!edge && !text) return false;
     try {
-      await api.steerSession(active.id, edge, strong ? 1.75 : 0.75);
-      setMsg(`Steered ${strong ? "strongly" : "gently"}: ${d.label}. Waiting for ${active.agent?.name ?? "the agent"} to revise…`);
-      onEvent?.("Steer sent. The agent will revise its proposal.");
+      await api.steerSession(active.id, text
+        ? { request_text: text }
+        : { edge: edge!, magnitude: strong ? 1.75 : 0.75 });
+      setMsg(text
+        ? `Your request was sent to ${active.agent?.name ?? "the agent"}. Nothing has been approved.`
+        : `Your change request was sent to ${active.agent?.name ?? "the agent"}. Nothing has been approved.`);
+      onEvent?.(text ? "Custom change request sent." : "Change request sent.");
     } catch {
-      setMsg("That steer was refused. Nothing was sent.");
+      setMsg("That change request was refused. Nothing was sent.");
+      return false;
     }
     setStrong(false);
     load();
+    return true;
   };
 
   const [resolving, setResolving] = useState<"left" | "right" | null>(null);
@@ -122,8 +120,10 @@ export default function SteeringPanel({ onEvent, onCount }: {
     const dir = outcome === "accepted" ? "right" : "left";
     try {
       await api.resolveSteering(active.id, outcome);
-      setMsg(outcome === "accepted" ? `Accepted v${active.version}. The agent has the final version.` : "Rejected. The agent has been told no.");
-      onEvent?.(outcome === "accepted" ? "Proposal accepted." : "Proposal rejected.");
+      setMsg(outcome === "accepted"
+        ? `Draft approved for ${active.agent?.name ?? "the agent"}.`
+        : `Draft rejected. ${active.agent?.name ?? "The agent"} was told not to use it.`);
+      onEvent?.(outcome === "accepted" ? "Proposal approved and sent." : "Proposal rejected.");
       if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
         setResolving(dir);
         setTimeout(() => {
@@ -154,12 +154,11 @@ export default function SteeringPanel({ onEvent, onCount }: {
 
   const dirBtn = (edge: Edge) => {
     const d = active?.directions.find((x) => x.edge === edge);
-    if (!d) return <div className={`steer-cell steer-${edge} steer-empty`} aria-hidden="true" />;
+    if (!d) return null;
     return (
-      <button className={`steer-cell steer-btn steer-${edge}`} onClick={() => steer(edge)}
+      <button className={`steer-choice steer-choice-${edge}`} onClick={() => steer(edge)}
         disabled={waiting}
-        aria-label={`${d.label} (${strong ? "strong" : "gentle"}) — ${d.expected_effect}`}>
-        <span className="steer-arrow" aria-hidden="true">{ARROW[edge]}</span>
+        aria-label={`Ask the agent: ${d.label} (${strong ? "a lot" : "a little"}). ${d.expected_effect}`}>
         <span className="steer-label">{d.label}</span>
         <span className="steer-effect">{d.expected_effect}</span>
       </button>
@@ -172,7 +171,7 @@ export default function SteeringPanel({ onEvent, onCount }: {
     return (
       <div className="panel steering-panel" role="alert">
         <div className="panel-head">
-          <h2>Steer an agent</h2>
+          <h2>Review agent proposals</h2>
           <button className="linkbtn" onClick={load}>Retry</button>
         </div>
         <div className="empty">
@@ -185,8 +184,8 @@ export default function SteeringPanel({ onEvent, onCount }: {
   return (
     <div className={`panel steering-panel${resolving ? ` resolving resolving-${resolving}` : ""}`}>
       <div className="panel-head">
-        <h2>Steer an agent</h2>
-        <span className="pill">{sessions.length} live proposal{sessions.length > 1 ? "s" : ""}</span>
+        <h2>Review agent proposals</h2>
+        <span className="pill">{sessions.length} draft{sessions.length === 1 ? "" : "s"} to review</span>
       </div>
 
       {sessions.length > 1 && (
@@ -201,9 +200,9 @@ export default function SteeringPanel({ onEvent, onCount }: {
       )}
       <div className="stage-question">
         <span className="stage-eyebrow">
-          {isExample ? "Example · " : ""}{active.agent?.name ?? "Agent"} · {active.category}
-          {active.project ? ` · project: ${active.project}` : ""} · version {active.version}
-          {active.locked && <span className="locked-pill">Locked · deliberate tap only</span>}
+          {isExample ? "Example draft" : `Draft from ${active.agent?.name ?? "your agent"}`} · {active.category}
+          {active.project ? ` · ${active.project}` : ""} · Current draft
+          {active.locked && <span className="locked-pill">Always asks you</span>}
         </span>
         <span className="stage-q-text">{active.title}</span>
       </div>
@@ -214,72 +213,79 @@ export default function SteeringPanel({ onEvent, onCount }: {
       >
         <ProposalBody session={active} />
       </div>
+      <RevisionSummary key={`${active.id}:${active.version}`} session={active} modelEnabled={summaryEnabled} />
       {waiting && (
         <div className="callout">
-          You steered “{active.pending_steer?.label}” — waiting for {active.agent?.name ?? "the agent"} to revise.
+          Change request sent: “{active.pending_steer?.request_text ?? active.pending_steer?.label}”. The agent is preparing a new draft; this one is not approved.
         </div>
       )}
-      {changeChip && !waiting && <div className="change-chip">{changeChip}</div>}
+      {isSample && !waiting && active.revisions[active.revisions.length - 1]?.note?.startsWith("Sample agent:") && (
+        <div className="callout sample-limitation">This preview only demonstrates the four listed choices, so the draft stayed the same for that request.</div>
+      )}
 
       {active.locked ? (
         <div className="locked-box">
-          Locked — steering is off for this category. Only you can answer it, every time,
-          in “Waiting on you” below.
+          This type of request always needs your direct approval. Find it in “Waiting on you” and answer it there.
         </div>
       ) : (
-        <div className="steerpad" role="group" aria-label="Steer this proposal">
+        <div className="steerpad" role="group" aria-label="Request a change to this draft">
           <div className="steerpad-head">
-            <span className="steerpad-title">Which way should it lean?</span>
-            <span className="steerpad-hint">Directions are requests — the revision may land differently</span>
+            <div className="steer-step-copy">
+              <span className="steer-step">1 · Refine the draft</span>
+              <span className="steerpad-title">Want the agent to change something?</span>
+              <span className="steerpad-hint">Pick one request. The agent will prepare a new draft; nothing is approved yet.</span>
+            </div>
           </div>
-          <div className="steer-cross">
+          <div className="steer-options" role="group" aria-label="Ways to change the draft">
             {dirBtn("top")}
             {dirBtn("left")}
-            <div className="steer-cell steer-center">
-              <span>{waiting ? "Waiting…" : "Steering only"}</span>
-              <small>Never buys, sends or deletes</small>
-            </div>
             {dirBtn("right")}
             {dirBtn("bottom")}
           </div>
+          <AdaptiveSteer key={active.id} sessionId={active.id} modelEnabled={modelEnabled}
+            disabled={waiting} onSend={(text) => steer(null, text)} />
           <div className="steer-foot">
-            <div className="seg seg-mini" role="group" aria-label="Steer strength">
-              <button className={!strong ? "tab active" : "tab"} onClick={() => setStrong(false)} aria-pressed={!strong}>Gentle</button>
-              <button className={strong ? "tab active" : "tab"} onClick={() => setStrong(true)} aria-pressed={strong}>Strong</button>
+            <span className="steer-strength-label">How much should it prioritize your request?</span>
+            <div className="seg seg-mini" role="group" aria-label="How much the agent should prioritize your request">
+              <button className={!strong ? "tab active" : "tab"} onClick={() => setStrong(false)} aria-pressed={!strong}>A little</button>
+              <button className={strong ? "tab active" : "tab"} onClick={() => setStrong(true)} aria-pressed={strong}>A lot</button>
             </div>
-            <span className="steerpad-hint">{strong ? "Push it hard — still never approves" : "A nudge, not a shove"}</span>
           </div>
         </div>
       )}
 
       {!active.locked && (
         <>
-          <p className="accept-caption">
-            Steering changed nothing yet. Accept sends this exact v{active.version} to{" "}
-            {active.agent?.name ?? "the agent"} to act on.
-          </p>
-          <div className="taprow steer-resolve">
-            <button className="primary" disabled={waiting} onClick={() => resolve("accepted")}>
-              {waiting ? "Waiting for revision…" : `Accept v${active.version}`}
-            </button>
-            <button onClick={() => resolve("rejected")}>Reject</button>
+          <div className="steer-approval">
+            <span className="steer-step">2 · Approve or reject</span>
+            <p className="accept-caption">
+              Approving lets {active.agent?.name ?? "the agent"} carry out this draft.
+            </p>
+            <div className="taprow steer-resolve">
+              <button className="primary" disabled={waiting} onClick={() => resolve("accepted")}>
+                {waiting ? "Waiting for the new draft…" : "Approve this draft"}
+              </button>
+              <button disabled={waiting} onClick={() => resolve("rejected")}>Reject proposal</button>
+            </div>
           </div>
         </>
       )}
       {msg && <div className="empty" role="status">{msg}</div>}
       {active.trajectory.length > 0 && (
-        <div className="trajectory">
-          <div className="trajectory-title">The path so far</div>
-          {active.trajectory.map((t, i) => (
-            <div className="trajectory-row" key={i}>
-              <span className="trajectory-dot" style={{ background: TRAJECTORY_COLOR[t.event] ?? "var(--c-blue)" }} />
-              <span>
-                {TRAJECTORY_TEXT[t.event] ?? t.event}
-                {t.label ? ` — ${t.label}` : ""}{t.version ? ` (v${t.version})` : ""}
-              </span>
-            </div>
-          ))}
-        </div>
+        <details className="trajectory">
+          <summary className="trajectory-title">Change history · {active.trajectory.length} steps</summary>
+          <div className="trajectory-list">
+            {active.trajectory.map((t, i) => (
+              <div className="trajectory-row" key={i}>
+                <span className="trajectory-dot" style={{ background: TRAJECTORY_COLOR[t.event] ?? "var(--c-blue)" }} />
+                <span>
+                  {TRAJECTORY_TEXT[t.event] ?? t.event}
+                  {t.label ? ` — ${t.label}` : ""}
+                </span>
+              </div>
+            ))}
+          </div>
+        </details>
       )}
     </div>
   );

@@ -10,7 +10,6 @@ interface Props {
   activeOverlay?: string | null;
 }
 
-const ARROW: Record<Edge, string> = { top: "↑", left: "←", right: "→", bottom: "↓" };
 const KEY_EDGE: Record<string, Edge> = {
   ArrowUp: "top",
   ArrowLeft: "left",
@@ -60,14 +59,13 @@ export default function DecisionStage({ payload, imageSrc, objects, busy, onStee
 
   const edgeBtn = (edge: Edge) => {
     const a = actionFor(edge);
-    if (!a) return <div className={`steer-cell steer-${edge} steer-empty`} aria-hidden="true" />;
+    if (!a) return null;
     return (
       <button
-        className={`steer-cell steer-btn steer-${edge}`}
+        className={`steer-choice steer-choice-${edge}`}
         onClick={() => onSteer(a.action_id)}
-        aria-label={`${a.label} — ${a.expected_effect}`}
+        aria-label={`Ask for ${a.label}: ${a.expected_effect}`}
       >
-        <span className="steer-arrow" aria-hidden="true">{ARROW[edge]}</span>
         <span className="steer-label">{a.label}</span>
         <span className="steer-effect">{a.expected_effect}</span>
       </button>
@@ -123,33 +121,31 @@ export default function DecisionStage({ payload, imageSrc, objects, busy, onStee
         ) : (
           <div className="stage-empty">
             <span className="big">{busy ?? "Nothing loaded yet."}</span>
-            Try <b>Trade-off demo</b> or <b>Visual demo</b> below — then steer the result
-            with the four directions.
+            Try <b>Trade-off demo</b> or <b>Visual demo</b> below, then choose how to ask the agent to
+            change its suggestion.
           </div>
         )}
       </div>
 
       {payload ? (
-        <div className="steerpad" role="group" aria-label="Steer this suggestion">
+        <div className="steerpad" role="group" aria-label="Improve this suggestion">
           <div className="steerpad-head">
-            <span className="steerpad-title">Which way should it lean?</span>
-            <span className="steerpad-hint">Tap a direction · swipe the picture · arrow keys</span>
+            <div className="steer-step-copy">
+              <span className="steer-step">Ask for a change</span>
+              <span className="steerpad-title">How would you improve this suggestion?</span>
+              <span className="steerpad-hint">Choose one request for a new version. This does not approve anything.</span>
+            </div>
           </div>
-          <div className="steer-cross">
+          <div className="steer-options" role="group" aria-label="Ways to improve the suggestion">
             {edgeBtn("top")}
             {edgeBtn("left")}
-            <div className="steer-cell steer-center">
-              <span>Steering only</span>
-              <small>Never buys, sends or deletes</small>
-            </div>
             {edgeBtn("right")}
             {edgeBtn("bottom")}
           </div>
         </div>
       ) : (
         <div className="steerpad steerpad-idle">
-          The four directions appear here once a demo is loaded. They only steer a
-          suggestion — they never approve anything.
+          Load a sample suggestion to see ways you can ask the agent to change it. A change request never approves the plan.
         </div>
       )}
     </div>

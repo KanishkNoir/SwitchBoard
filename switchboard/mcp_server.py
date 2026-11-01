@@ -123,8 +123,10 @@ def submit_proposal(title: str, proposal_text: str, category: str, directions: l
     Each direction: {"edge": "top|left|right|bottom", "label": "Cheaper",
     "expected_effect": "what changes if the human steers this way"}.
     The human steers from Switchboard; steering never accepts your proposal.
-    Poll get_steering for nudges, answer with revise_proposal, and stop when
-    get_steering reports accepted/rejected.
+    A steer may be one declared edge or a written request from the human. Treat
+    either as a bounded revision request in the current task; neither authorizes
+    an action. Poll get_steering, answer with revise_proposal, and stop when it
+    reports accepted/rejected.
     """
     if hub() is not None:
         return hub().submit_proposal(title, proposal_text, category, directions, project or None)
@@ -134,7 +136,7 @@ def submit_proposal(title: str, proposal_text: str, category: str, directions: l
 
 @mcp.tool()
 def get_steering(session_id: str) -> dict:
-    """Poll for the human's latest steer (or final acceptance) on your proposal."""
+    """Poll for an edge or written change request (or final acceptance) on your proposal."""
     if hub() is not None:
         return hub().pending_steer(session_id)
     return svc().pending_steer(_agent(), session_id)
