@@ -12,8 +12,8 @@
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.45}
 header{display:flex;align-items:center;gap:14px;padding:14px 22px;border-bottom:1px solid var(--line);background:var(--panel)}
-.logo{width:30px;height:30px;border:2px solid var(--amber);display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:4px;background:#0c0d0f}
-.logo i{background:var(--amber-dim);display:block}.logo i.on{background:var(--amber)}
+.logo{width:30px;height:30px;border-radius:8px;display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:4px;background:#0c0d0f}
+.logo i{display:block;border-radius:2px}.logo i:nth-child(1),.logo i:nth-child(4){background:#7c9cff}.logo i:nth-child(2){background:#b5dc63}.logo i:nth-child(3){background:#ffad7a}
 header h1{font-size:19px;margin:0;letter-spacing:-.02em;font-weight:700}
 header h1 em{font-style:normal;color:var(--amber)}
 .tag{color:var(--dim);font-size:13px}
@@ -83,7 +83,7 @@ footer{padding:14px 22px;color:var(--faint);font-size:12px;border-top:1px solid 
 @media(prefers-reduced-motion:reduce){.spin{animation:none}}
 </style></head><body>
 <header>
-  <div class="logo"><i class="on"></i><i></i><i></i><i class="on"></i></div>
+  <div class="logo"><i></i><i></i><i></i><i></i></div>
   <h1>Switch<em>board</em></h1>
   <span class="tag">Your agents learn when to ask.</span>
   <div class="status"><span><span class="dot"></span><span id="health">connecting</span></span>
