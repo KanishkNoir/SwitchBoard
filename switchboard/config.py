@@ -47,6 +47,9 @@ class Settings:
     modal_image_url: str = field(default_factory=lambda: os.environ.get("MODAL_IMAGE_URL", ""))
     modal_t2_url: str = field(default_factory=lambda: os.environ.get("MODAL_T2_URL", ""))
     enable_t3: bool = field(default_factory=lambda: _bool("SWITCHBOARD_ENABLE_T3"))
+    # Shadow remains the compatibility default. Enforce blocks automatic
+    # answers until the category has enough human-confirmed evidence.
+    risk_gate_mode: str = field(default_factory=lambda: os.environ.get("SWITCHBOARD_RISK_GATE_MODE", "shadow").strip().lower())
     enable_segmentation: bool = field(default_factory=lambda: _bool("SWITCHBOARD_ENABLE_SEGMENTATION"))
     enable_image: bool = field(default_factory=lambda: _bool("SWITCHBOARD_ENABLE_IMAGE"))
     t1_threshold: float = 0.35
@@ -54,6 +57,10 @@ class Settings:
     # Categories/classes that can never be auto-answered in v1 (LLD 7.2).
     locked_categories: tuple = ("payments", "deletion", "messaging_new_recipient")
     locked_context_flags: tuple = ("money_movement", "deletion", "new_recipient", "irreversible_external")
+
+    def __post_init__(self):
+        if self.risk_gate_mode not in ("shadow", "enforce"):
+            raise ValueError("SWITCHBOARD_RISK_GATE_MODE must be 'shadow' or 'enforce'")
 
 
 settings = Settings()

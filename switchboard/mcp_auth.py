@@ -29,8 +29,29 @@ def _hash(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
+class SwitchboardAuthorizationCode(AuthorizationCode):
+    """OAuth authorization code bound to one Switchboard agent identity."""
+
+    subject: str
+
+
+class SwitchboardAccessToken(AccessToken):
+    """Access token carrying the authenticated Switchboard agent id."""
+
+    subject: str
+
+
+class SwitchboardRefreshToken(RefreshToken):
+    """Refresh token retaining both agent identity and the protected resource."""
+
+    subject: str
+    resource: str | None = None
+
+
 class SwitchboardOAuthProvider(
-    OAuthAuthorizationServerProvider[AuthorizationCode, RefreshToken, AccessToken]
+    OAuthAuthorizationServerProvider[
+        SwitchboardAuthorizationCode, SwitchboardRefreshToken, SwitchboardAccessToken
+    ]
 ):
     """Persist OAuth state in Switchboard's existing SQLite ledger."""
 
@@ -138,7 +159,7 @@ class SwitchboardOAuthProvider(
         self.store.execute("DELETE FROM mcp_oauth_transactions WHERE session_hash=?", (_hash(session),))
         params = AuthorizationParams.model_validate(data["params"])
         code = secrets.token_urlsafe(32)
-        auth_code = AuthorizationCode(
+        auth_code = SwitchboardAuthorizationCode(
             code=code,
             scopes=params.scopes or ["switchboard:access"],
             expires_at=time.time() + 300,
@@ -164,7 +185,7 @@ class SwitchboardOAuthProvider(
                                 headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
 
     async def load_authorization_code(self, client: OAuthClientInformationFull,
-                                      authorization_code: str) -> AuthorizationCode | None:
+                                      authorization_code: str) -> SwitchboardAuthorizationCode | None:
         row = self.store.query_one(
             "SELECT code_json,expires_at FROM mcp_oauth_codes WHERE code_hash=?", (_hash(authorization_code),)
         )
@@ -172,11 +193,11 @@ class SwitchboardOAuthProvider(
             return None
         code_data = json.loads(row["code_json"])
         code_data["code"] = authorization_code
-        code = AuthorizationCode.model_validate(code_data)
+        code = SwitchboardAuthorizationCode.model_validate(code_data)
         return code if code.client_id == client.client_id else None
 
     async def exchange_authorization_code(self, client: OAuthClientInformationFull,
-                                          authorization_code: AuthorizationCode) -> OAuthToken:
+                                          authorization_code: SwitchboardAuthorizationCode) -> OAuthToken:
         with self.store._lock:
             row = self.store.conn.execute(
                 "DELETE FROM mcp_oauth_codes WHERE code_hash=? AND expires_at>? RETURNING code_json",
@@ -189,13 +210,13 @@ class SwitchboardOAuthProvider(
             raise ValueError("authorization code is expired or already used")
         code_data = json.loads(row["code_json"])
         code_data["code"] = authorization_code.code
-        code = AuthorizationCode.model_validate(code_data)
+        code = SwitchboardAuthorizationCode.model_validate(code_data)
         if not code.subject or code.client_id != client.client_id:
             raise ValueError("authorization code has no Switchboard agent")
         return self._issue_tokens(client.client_id, code.subject, code.scopes, code.resource)
 
     async def load_refresh_token(self, client: OAuthClientInformationFull,
-                                 refresh_token: str) -> RefreshToken | None:
+                                 refresh_token: str) -> SwitchboardRefreshToken | None:
         row = self.store.query_one(
             "SELECT token_json,expires_at,revoked_at,token_type FROM mcp_oauth_tokens WHERE token_hash=?",
             (_hash(refresh_token),),
@@ -204,11 +225,11 @@ class SwitchboardOAuthProvider(
             return None
         token_data = json.loads(row["token_json"])
         token_data["token"] = refresh_token
-        token = RefreshToken.model_validate(token_data)
+        token = SwitchboardRefreshToken.model_validate(token_data)
         return token if token.client_id == client.client_id else None
 
     async def exchange_refresh_token(self, client: OAuthClientInformationFull,
-                                     refresh_token: RefreshToken, scopes: list[str]) -> OAuthToken:
+                                     refresh_token: SwitchboardRefreshToken, scopes: list[str]) -> OAuthToken:
         if refresh_token.client_id != client.client_id or not refresh_token.subject:
             raise ValueError("refresh token does not belong to this client")
         allowed = set(refresh_token.scopes)
@@ -235,7 +256,7 @@ class SwitchboardOAuthProvider(
         return self._issue_tokens(client.client_id, refresh_token.subject or "", list(requested),
                                   refresh_token.resource, family_id=family_id)
 
-    async def load_access_token(self, token: str) -> AccessToken | None:
+    async def load_access_token(self, token: str) -> SwitchboardAccessToken | None:
         row = self.store.query_one(
             "SELECT token_json,expires_at,revoked_at,token_type FROM mcp_oauth_tokens WHERE token_hash=?",
             (_hash(token),),
@@ -244,7 +265,7 @@ class SwitchboardOAuthProvider(
             return None
         access_data = json.loads(row["token_json"])
         access_data["token"] = token
-        access = AccessToken.model_validate(access_data)
+        access = SwitchboardAccessToken.model_validate(access_data)
         if not access.subject:
             return None
         try:
@@ -254,7 +275,7 @@ class SwitchboardOAuthProvider(
             return None
         return access
 
-    async def revoke_token(self, token: AccessToken | RefreshToken) -> None:
+    async def revoke_token(self, token: SwitchboardAccessToken | SwitchboardRefreshToken) -> None:
         with self.store._lock:
             row = self.store.conn.execute(
                 "SELECT family_id FROM mcp_oauth_tokens WHERE token_hash=?", (_hash(token.token),)
@@ -273,10 +294,12 @@ class SwitchboardOAuthProvider(
         access_raw = secrets.token_urlsafe(32)
         refresh_raw = secrets.token_urlsafe(48)
         now = time.time()
-        access = AccessToken(token=access_raw, client_id=client_id, scopes=scopes,
-                             expires_at=int(now + self.access_lifetime), resource=resource, subject=agent_id)
-        refresh = RefreshToken(token=refresh_raw, client_id=client_id, scopes=scopes,
-                               expires_at=int(now + self.refresh_lifetime), resource=resource, subject=agent_id)
+        access = SwitchboardAccessToken(token=access_raw, client_id=client_id, scopes=scopes,
+                                        expires_at=int(now + self.access_lifetime),
+                                        resource=resource, subject=agent_id)
+        refresh = SwitchboardRefreshToken(token=refresh_raw, client_id=client_id, scopes=scopes,
+                                          expires_at=int(now + self.refresh_lifetime),
+                                          resource=resource, subject=agent_id)
         for raw, token, token_type in ((access_raw, access, "access"), (refresh_raw, refresh, "refresh")):
             token_data = token.model_dump()
             token_data["token"] = ""

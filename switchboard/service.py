@@ -2,9 +2,10 @@ import hashlib
 import json
 import secrets
 from datetime import datetime, timezone
+from functools import wraps
 
 from .config import settings as default_settings
-from .domain import QuestionRequest, canonical_json, classify_risk, evaluate_scope, normalize_text, sha256_hex
+from .domain import QuestionRequest, canonical_json, classify_risk, evaluate_scope, normalize_text, sha256_hex, tokens
 from .matching import MatcherLadder
 from .persistence import Store, new_id, now_iso
 
@@ -23,6 +24,15 @@ def _hash_key(key: str) -> str:
     return hashlib.sha256(key.encode()).hexdigest()
 
 
+def _transactional(method):
+    """Keep service-level state transitions and their audit events together."""
+    @wraps(method)
+    def wrapped(self, *args, **kwargs):
+        with self.store.transaction():
+            return method(self, *args, **kwargs)
+    return wrapped
+
+
 class SwitchboardService:
     def __init__(self, store: Store, cfg=None, ladder: MatcherLadder | None = None):
         self.store = store
@@ -36,12 +46,14 @@ class SwitchboardService:
         self.ladder = ladder
 
     # ---------- agents / auth ----------
+    @_transactional
     def register_agent(self, name, kind="cli", scopes=None):
         key = "sb_" + secrets.token_urlsafe(24)
         aid = new_id()
         self.store.execute(
             "INSERT INTO agents(id,name,kind,key_hash,scopes_json,enabled,created_at) VALUES(?,?,?,?,?,1,?)",
-            (aid, name, kind, _hash_key(key), json.dumps(scopes or ["ask", "get_rules", "report_outcome"]), now_iso()))
+            (aid, name, kind, _hash_key(key),
+             json.dumps(scopes or ["ask", "get_rules", "report_outcome", "record_use"]), now_iso()))
         self.store.emit("human", "local_user", "agent.registered", "agent", aid, {"name": name})
         return {"agent_id": aid, "api_key": key}  # key shown once at registration
 
@@ -112,6 +124,7 @@ class SwitchboardService:
             row = self.store.query_one("SELECT * FROM category_settings WHERE category=?", (category,))
         return row
 
+    @_transactional
     def set_stage(self, category, stage, reason="manual"):
         if stage not in ("shadow", "suggest", "warn", "auto"):
             raise SwitchboardError("INVALID_SCHEMA", "bad stage")
@@ -123,6 +136,7 @@ class SwitchboardService:
         return self.category(category)
 
     # ---------- rules ----------
+    @_transactional
     def create_rule(self, category, predicate, answer, scope=None, source_type="explicit_edit",
                     confirmed_by_human=True, actor="local_user"):
         rid = new_id()
@@ -140,6 +154,7 @@ class SwitchboardService:
                         "rule", rid, {"version_id": vid, "category": category})
         return {"rule_id": rid, "version_id": vid, "version_number": 1}
 
+    @_transactional
     def supersede_rule(self, rule_id, new_answer=None, new_scope=None, new_predicate=None, actor="local_user"):
         rule = self.store.query_one("SELECT * FROM rules WHERE id=?", (rule_id,))
         if not rule:
@@ -195,6 +210,7 @@ class SwitchboardService:
                                     (category,))
         return self.store.query("SELECT * FROM recalibration_holds ORDER BY created_at")
 
+    @_transactional
     def clear_holds(self, category, actor="local_user"):
         """Human (or B1-style immediate resume) clears all held slices in a category."""
         self.store.execute(
@@ -261,69 +277,139 @@ class SwitchboardService:
             raise SwitchboardError("INVALID_SCHEMA", "request_id, question, category required")
         if len(req.question) > 4000:
             raise SwitchboardError("INVALID_SCHEMA", "question too long")
+        self._validate_parent_receipts(agent, req)
         chash = req.canonical_hash()
-        prior_q = self.store.query_one(
-            "SELECT * FROM questions WHERE agent_id=? AND request_id=?", (agent["id"], req.request_id))
-        if prior_q:
-            if prior_q["canonical_hash"] != chash:
-                raise SwitchboardError("IDEMPOTENCY_CONFLICT")
-            dec = self.store.query_one("SELECT * FROM decisions WHERE question_id=? ORDER BY created_at DESC",
-                                       (prior_q["id"],))
-            rec = self.store.query_one("SELECT * FROM receipts WHERE decision_id=?", (dec["id"],))
-            return self._response(dec, rec, prior_q)
+        prior = self._prior_request(agent["id"], req.request_id, chash)
+        if prior is not None:
+            return prior
+
+        # Matching, including any hosted T3 call, must not hold a database
+        # transaction open. The final transaction revalidates the chosen rule.
         cat = self.category(req.category)
         risk = classify_risk(req, self.cfg)
-        qid = new_id()
-        self.store.execute(
-            "INSERT INTO questions(id,request_id,agent_id,canonical_hash,question_text,category,intent_type,"
-            "risk_class,reversibility,deadline_at,options_json,context_json,status,created_at)"
-            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (qid, req.request_id, agent["id"], chash, normalize_text(req.question), req.category,
-             req.intent_type, risk["risk_class"], req.reversibility, req.deadline_at,
-             json.dumps(req.options), json.dumps(req.context), "received", now_iso()))
-        self.store.emit("agent", agent["id"], "question.received", "question", qid,
-                        {"category": req.category}, correlation_id=req.request_id)
-        # Queue first, decide second: even a locked question must reach the
-        # human — "locked" means it always asks, never that it disappears.
-        self._register_attention(qid, req, risk)
-        if risk["is_locked"] or cat["locked"]:
-            return self._persist_decision(qid, req, cat, mode="deferred", reason="locked",
-                                          tier="none", candidate=None, human=True)
-        # Candidate matching with hard scope validation before any stage decision.
-        versions = self.active_rule_versions(req.category)
-        candidate = self.ladder.resolve(normalize_text(req.question), req.category, req.intent_type, versions)
+        candidate = None
         scope_result = None
-        if candidate:
-            scope_result = evaluate_scope(candidate["rule_version"]["_scope"], req.context or {})
-            if not scope_result["valid"]:
+        match_reason = "below_policy"
+        match_tier = "none"
+        if not risk["is_locked"] and not cat["locked"]:
+            versions = self.active_rule_versions(req.category)
+            candidate = self.ladder.resolve(normalize_text(req.question), req.category, req.intent_type,
+                                            versions, context=req.context or {})
+        if candidate and candidate.get("blocked_by_scope"):
+            scope_result = candidate["scope_result"]
+            match_reason = "out_of_scope"
+            candidate = None
+        elif candidate and candidate.get("ambiguous"):
+            match_reason = "ambiguous_match"
+            match_tier = candidate["tier"]
+            candidate = None
+        elif candidate:
+            scope_result = candidate.pop("scope_result", None)
+            match_tier = candidate["tier"]
+
+        with self.store.transaction():
+            # A concurrent retry may have completed while matching was in
+            # progress. Resolve it from the committed record instead of
+            # creating a duplicate or surfacing a raw UNIQUE constraint error.
+            prior = self._prior_request(agent["id"], req.request_id, chash)
+            if prior is not None:
+                return prior
+
+            cat = self.category(req.category)
+            risk = classify_risk(req, self.cfg)
+            self._validate_parent_receipts(agent, req)
+            qid = new_id()
+            self.store.execute(
+                "INSERT INTO questions(id,request_id,agent_id,canonical_hash,question_text,category,intent_type,"
+                "risk_class,reversibility,deadline_at,options_json,context_json,status,created_at,parent_receipts_json)"
+                " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (qid, req.request_id, agent["id"], chash, normalize_text(req.question), req.category,
+                 req.intent_type, risk["risk_class"], req.reversibility, req.deadline_at,
+                 json.dumps(req.options), json.dumps(req.context), "received", now_iso(),
+                 json.dumps(sorted({receipt_id.strip() for receipt_id in (req.parent_receipts or [])}))))
+            self.store.emit("agent", agent["id"], "question.received", "question", qid,
+                            {"category": req.category}, correlation_id=req.request_id)
+            # Queue first, decide second: locked questions still reach the
+            # human. Both writes now commit with their decision and receipt.
+            self._register_attention(qid, req, risk)
+            if risk["is_locked"] or cat["locked"]:
+                return self._persist_decision(qid, req, cat, mode="deferred", reason="locked",
+                                              tier="none", candidate=None, human=True)
+            if scope_result and not scope_result["valid"]:
                 self.store.emit("system", "switchboard", "decision.deferred", "question", qid,
                                 {"reason": "out_of_scope", "scope": scope_result})
-                candidate = None
-        if cat["min_evidence_state"] == "quarantined":
-            return self._persist_decision(qid, req, cat, "deferred", "feedback_integrity_hold", "none", None, True)
-        stage = cat["stage"]
-        # V1: only the flipped rule's slice is held; other slices proceed (B1 speed).
-        if candidate and candidate["rule_version"]["rule_id"] in self.held_rule_ids(req.category):
-            return self._persist_decision(qid, req, cat, "deferred", "recalibration_pending",
-                                          candidate["tier"] if candidate else "none", candidate, True, scope_result)
-        if self._away_grant_active(req.category, req.intent_type) and candidate:
-            stage = "auto"  # scoped grant upgrades suggest, never overrides locks/shadow logging below
-        if stage == "shadow":
-            return self._persist_decision(qid, req, cat, "shadow", "shadow",
-                                          candidate["tier"] if candidate else "none", candidate, True, scope_result)
-        if stage == "suggest":
-            return self._persist_decision(qid, req, cat, "suggested", "suggest",
-                                          candidate["tier"] if candidate else "none", candidate, True, scope_result)
-        if stage == "warn" and candidate:
-            # V2 warning stage: answer is given, but flagged and the human is
-            # notified with a veto — graduation step between suggest and auto.
-            return self._persist_decision(qid, req, cat, "warn", "warn_stage",
-                                          candidate["tier"], candidate, False, scope_result)
-        if stage == "auto" and candidate:
-            return self._persist_decision(qid, req, cat, "auto", "matched_rule", candidate["tier"],
-                                          candidate, False, scope_result)
-        return self._persist_decision(qid, req, cat, "deferred", "below_policy",
-                                      candidate["tier"] if candidate else "none", candidate, True, scope_result)
+            if cat["min_evidence_state"] == "quarantined":
+                return self._persist_decision(qid, req, cat, "deferred", "feedback_integrity_hold",
+                                              "none", None, True, scope_result)
+            stage = cat["stage"]
+            if candidate and candidate["rule_version"]["rule_id"] in self.held_rule_ids(req.category):
+                return self._persist_decision(qid, req, cat, "deferred", "recalibration_pending",
+                                              candidate["tier"], candidate, True, scope_result)
+            if self._away_grant_active(req.category, req.intent_type) and candidate:
+                stage = "auto"  # scoped grant upgrades suggest, never overrides locks or shadow
+            if stage == "shadow":
+                return self._persist_decision(qid, req, cat, "shadow", "shadow",
+                                              candidate["tier"] if candidate else "none",
+                                              candidate, True, scope_result)
+            if stage == "suggest":
+                return self._persist_decision(qid, req, cat, "suggested", "suggest",
+                                              candidate["tier"] if candidate else "none",
+                                              candidate, True, scope_result)
+            if stage in ("warn", "auto") and candidate and getattr(self.cfg, "risk_gate_mode", "shadow") == "enforce":
+                gate = self.risk_estimate(req.category)
+                if gate["gate_state"] != "within_target":
+                    reason = ("risk_gate_insufficient_evidence" if gate["gate_state"] == "insufficient_evidence"
+                              else "risk_gate_exceeded")
+                    return self._persist_decision(qid, req, cat, "deferred", reason,
+                                                  candidate["tier"], candidate, True, scope_result)
+            if stage == "warn" and candidate:
+                return self._persist_decision(qid, req, cat, "warn", "warn_stage",
+                                              candidate["tier"], candidate, False, scope_result)
+            if stage == "auto" and candidate:
+                return self._persist_decision(qid, req, cat, "auto", "matched_rule",
+                                              candidate["tier"], candidate, False, scope_result)
+            return self._persist_decision(qid, req, cat, "deferred", match_reason,
+                                          match_tier, candidate, True, scope_result)
+
+    def _prior_request(self, agent_id, request_id, canonical_hash):
+        prior_q = self.store.query_one(
+            "SELECT * FROM questions WHERE agent_id=? AND request_id=?", (agent_id, request_id))
+        if not prior_q:
+            return None
+        if prior_q["canonical_hash"] != canonical_hash:
+            raise SwitchboardError("IDEMPOTENCY_CONFLICT")
+        dec = self.store.query_one(
+            "SELECT * FROM decisions WHERE question_id=? ORDER BY created_at DESC LIMIT 1",
+            (prior_q["id"],))
+        if not dec:
+            raise SwitchboardError("INTERNAL_FAIL_CLOSED", "idempotent request has no committed decision")
+        rec = self.store.query_one("SELECT * FROM receipts WHERE decision_id=?", (dec["id"],))
+        return self._response(dec, rec, prior_q)
+
+    def _validate_parent_receipts(self, agent, req):
+        receipts = req.parent_receipts or []
+        if not isinstance(receipts, list) or len(receipts) > 32:
+            raise SwitchboardError("INVALID_SCHEMA", "parent_receipts must contain at most 32 receipt IDs")
+        normalized = []
+        for receipt_id in receipts:
+            if not isinstance(receipt_id, str) or not receipt_id.strip() or len(receipt_id) > 160:
+                raise SwitchboardError("INVALID_SCHEMA", "parent receipt IDs must be 1-160 characters")
+            if receipt_id != receipt_id.strip():
+                raise SwitchboardError("INVALID_SCHEMA", "parent receipt IDs must not contain surrounding whitespace")
+            normalized.append(receipt_id)
+        if len(normalized) != len(set(normalized)):
+            raise SwitchboardError("INVALID_SCHEMA", "parent_receipts must not contain duplicates")
+        for receipt_id in normalized:
+            row = self.store.query_one(
+                "SELECT r.receipt_type,r.revoked_at,r.expires_at,q.agent_id "
+                "FROM receipts r JOIN decisions d ON d.id=r.decision_id "
+                "JOIN questions q ON q.id=d.question_id WHERE r.id=?", (receipt_id,))
+            if not row or row["agent_id"] != agent["id"]:
+                raise SwitchboardError("NOT_FOUND", "parent receipt")
+            if row["receipt_type"] != "answer" or row["revoked_at"] is not None:
+                raise SwitchboardError("INVALID_SCHEMA", "parent receipt is not an active answer")
+            if row["expires_at"] and row["expires_at"] < now_iso():
+                raise SwitchboardError("GRANT_EXPIRED", "parent receipt has expired")
 
     def action_request_status(self, agent, question_id: str, expected_intent="action_review") -> dict:
         """Return a human's one-time answer for a question owned by this agent."""
@@ -383,6 +469,18 @@ class SwitchboardService:
         event = {"auto": "decision.auto_answered", "shadow": "decision.shadow_logged",
                  "suggested": "decision.suggested", "warn": "decision.warn_answered"}.get(mode, "decision.deferred")
         self.store.emit("system", "switchboard", event, "decision", did, {"reason": reason, "tier": tier})
+        if req.parent_receipts:
+            owner = self.store.query_one("SELECT agent_id FROM questions WHERE id=?", (qid,))
+            for parent_receipt in sorted(set(req.parent_receipts)):
+                edge_id = new_id()
+                self.store.execute(
+                    "INSERT OR IGNORE INTO decision_dependencies(id,source_receipt_id,dependent_type,dependent_id,"
+                    "relationship,observed_by,evidence_class,created_at,status)"
+                    " VALUES(?,?, 'decision',?,'informed_by_parent_receipt','agent','agent_asserted',?,'pending')",
+                    (edge_id, parent_receipt, did, now_iso()))
+                self.store.emit("agent", owner["agent_id"], "decision.dependency_recorded", "receipt",
+                                parent_receipt, {"dependent_type": "decision", "dependent_id": did},
+                                evidence_class="agent_asserted")
         if mode == "auto":
             gate = self.risk_estimate(cat["category"])
             if gate["would_block"]:
@@ -413,7 +511,8 @@ class SwitchboardService:
             "warning": ("warn_stage: answered under the warning stage; the human has been "
                         "notified and can veto" if dec["mode"] == "warn" else None),
             "risk_gate": (self.risk_estimate(q["category"])
-                          if dec["mode"] in ("auto", "warn") else None),
+                          if dec["mode"] in ("auto", "warn")
+                          or dec["reason_code"].startswith("risk_gate_") else None),
             "explanation": f"{dec['reason_code']} via {dec['matcher_tier']}",
         }
         return resp
@@ -444,10 +543,14 @@ class SwitchboardService:
         "locked": "Locked class — only you can answer this.",
         "quarantine": "A rule tried to answer outside its scope, so it was paused and the question came to you.",
         "recalibration_pending": "This category is recalibrating after a correction, so the rule is paused.",
+        "risk_gate_insufficient_evidence": "The answer is paused until this category has enough confirmed evidence.",
+        "risk_gate_exceeded": "The current error estimate is above this category's configured risk target.",
         "shadow": "Shadow stage: the rule would have answered, but this category only watches for now.",
         "suggest": "Suggest stage: Switchboard proposed an answer and waited for your tap.",
         "warn_stage": "Warning stage: Switchboard answered and left you a veto.",
         "rule_match": "A standing rule inside its scope answered this.",
+        "ambiguous_match": "Several rules looked close, so Switchboard asked instead of choosing for you.",
+        "out_of_scope": "A similar rule exists, but its confirmed scope does not cover this situation.",
         "governor_budget": "The attention budget for this batch was reached, so this waited.",
         "semantic_ambiguous": "The matching rule's evidence was ambiguous, so it asked instead of guessing.",
         "no_match": "No standing rule covered this, so it asked you.",
@@ -504,6 +607,7 @@ class SwitchboardService:
                 "categories": cats,
                 "t3_enabled": self.ladder.t3 is not None}
 
+    @_transactional
     def complete_onboarding(self, model_calls: bool = False, risk_choice: str = "balanced",
                             actor="local_user") -> dict:
         targets = {"careful": 0.01, "balanced": 0.02, "relaxed": 0.05}
@@ -528,6 +632,7 @@ class SwitchboardService:
             " FROM attention_items ai JOIN questions q ON q.id=ai.question_id"
             " WHERE ai.status='notified' ORDER BY ai.created_at DESC")
 
+    @_transactional
     def dismiss_notice(self, item_id, actor="local_user"):
         """Accept a warn-stage answer silently: clear the notice, record nothing."""
         item = self.store.query_one("SELECT * FROM attention_items WHERE id=? AND status='notified'",
@@ -539,6 +644,7 @@ class SwitchboardService:
         self.store.emit("human", actor, "attention.notice_accepted", "question", item["question_id"], {})
         return {"item_id": item_id, "dismissed": True}
 
+    @_transactional
     def veto_notice(self, item_id, actor="local_user"):
         """Veto a warn-stage answer: clear the notice and record a human negative."""
         item = self.store.query_one("SELECT * FROM attention_items WHERE id=? AND status='notified'",
@@ -558,34 +664,138 @@ class SwitchboardService:
                 "decision_id": dec["id"] if dec else None}
 
     # ---------- attention ----------
+    @staticmethod
+    def _canonical_options(options):
+        if not options or not isinstance(options, list):
+            return []
+        canonical = []
+        for option in options:
+            if not isinstance(option, dict) or not str(option.get("id", "")).strip():
+                return []
+            canonical.append({"id": str(option["id"]).strip(),
+                              "label": normalize_text(str(option.get("label", ""))),
+                              "value": option.get("value")})
+        if len({option["id"] for option in canonical}) != len(canonical):
+            return []
+        return sorted(canonical, key=lambda option: option["id"])
+
+    @classmethod
+    def _attention_decision_key(cls, question):
+        raw_options = question.get("options")
+        if raw_options is None:
+            try:
+                raw_options = json.loads(question.get("options_json") or "[]")
+            except (TypeError, ValueError):
+                return None
+        options = cls._canonical_options(raw_options)
+        if not options:
+            return None
+        try:
+            context = question.get("context")
+            if context is None:
+                context = json.loads(question.get("context_json") or "{}")
+        except (TypeError, ValueError):
+            return None
+        try:
+            question_text = question.get("question")
+            if question_text is None:
+                question_text = question.get("question_text", "")
+            category = question.get("category")
+            deadline = question.get("deadline_at")
+            risk_class = question.get("risk_class")
+            reversibility = question.get("reversibility")
+            intent_type = question.get("intent_type")
+            parent_receipts = question.get("parent_receipts")
+            if parent_receipts is None:
+                parent_receipts = json.loads(question.get("parent_receipts_json") or "[]")
+        except AttributeError:
+            return None
+        payload = {"category": category, "intent_type": intent_type,
+                   "options": options, "context": context,
+                   "question_tokens": sorted(tokens(question_text or "")),
+                   "deadline_at": deadline, "risk_class": risk_class,
+                   "reversibility": reversibility,
+                   "parent_receipts": sorted(parent_receipts or [])}
+        return sha256_hex(canonical_json(payload))
+
     def _register_attention(self, qid, req, risk):
-        # Merge only on strict compatibility: same category, same option IDs, same normalized decision key.
-        opt_ids = sorted(o.get("id", "") for o in req.options)
-        decision_key = sha256_hex(f"{req.category}|{','.join(opt_ids)}|"
-                                  f"{' '.join(sorted(__import__('switchboard.domain', fromlist=['tokens']).tokens(req.question)))}")
+        # Candidate grouping is deterministic and requires matching intent,
+        # full option meaning, context, risk, reversibility, and deadline.
+        key_data = {"category": req.category, "intent_type": req.intent_type,
+                    "question": req.question, "options": req.options,
+                    "context": req.context or {}, "deadline_at": req.deadline_at,
+                    "risk_class": risk["risk_class"], "reversibility": req.reversibility,
+                    "parent_receipts": sorted((req.parent_receipts or []))}
+        decision_key = self._attention_decision_key(key_data)
         batch_id = None
-        existing = self.store.query_one(
+        existing = (self.store.query_one(
             "SELECT * FROM attention_batches WHERE decision_key=? AND status='open'", (decision_key,))
-        if existing and opt_ids:
+            if decision_key else None)
+        if existing:
             batch_id = existing["id"]
-        elif opt_ids:
+        elif decision_key:
             batch_id = new_id()
             self.store.execute(
                 "INSERT INTO attention_batches(id,decision_key,status,created_at,merge_reason,compatibility_json)"
                 " VALUES(?,?, 'open',?,?,?)", (batch_id, decision_key, now_iso(),
-                                               "same_category_options_decision_key", json.dumps({"options": opt_ids})))
+                                               "same_context_intent_options", canonical_json(key_data)))
             self.store.emit("system", "switchboard", "attention.items_clustered", "batch", batch_id, {})
-        priority = 50.0
-        if req.deadline_at:
-            priority += 30.0
-        if risk["risk_class"] == "locked":
-            priority = 100.0
+        priority, urgency = self._attention_priority(req, risk)
         self.store.execute(
             "INSERT INTO attention_items(id,question_id,priority_score,urgency_class,deadline_at,status,batch_id,"
             "created_at,updated_at) VALUES(?,?,?,?,?,'queued',?,?,?)",
-            (new_id(), qid, priority, "critical" if priority >= 80 else "normal",
+            (new_id(), qid, priority, urgency,
              req.deadline_at, batch_id, now_iso(), now_iso()))
         return batch_id
+
+    @staticmethod
+    def _attention_priority(req, risk):
+        priority = 35.0
+        urgency = "normal"
+        if req.deadline_at:
+            try:
+                due = datetime.fromisoformat(req.deadline_at.replace("Z", "+00:00"))
+                if due.tzinfo is None:
+                    due = due.replace(tzinfo=timezone.utc)
+                slack = (due - datetime.now(timezone.utc)).total_seconds()
+                if slack <= 0:
+                    priority += 50
+                    urgency = "critical"
+                elif slack <= 60 * 60:
+                    priority += 40
+                    urgency = "critical"
+                elif slack <= 24 * 60 * 60:
+                    priority += 30
+                    urgency = "high"
+                elif slack <= 7 * 24 * 60 * 60:
+                    priority += 15
+                    urgency = "high"
+                else:
+                    priority += 5
+            except (TypeError, ValueError):
+                # Invalid deadlines do not gain priority from an untrusted hint.
+                pass
+        if req.reversibility == "irreversible":
+            priority += 20
+            urgency = "critical"
+        elif req.reversibility == "costly":
+            priority += 12
+            urgency = "high" if urgency == "normal" else urgency
+        elif req.reversibility == "unknown":
+            priority += 3
+        if req.intent_type == "action_review":
+            priority += 10
+        priority += min(10, 2 * len(req.parent_receipts or []))
+        hinted = str((req.context or {}).get("urgency", "")).lower()
+        if hinted == "critical":
+            priority += 20
+            urgency = "critical"
+        elif hinted == "high":
+            priority += 10
+            urgency = "high" if urgency == "normal" else urgency
+        if risk["risk_class"] == "locked":
+            return 100.0, "critical"
+        return min(99.0, priority), urgency
 
     def swipe_eligibility(self, q, item=None, locked=None) -> dict:
         """Server-computed from stored question data — never from client claims.
@@ -698,6 +908,7 @@ class SwitchboardService:
                 "approval_streak": best, "burst_per_10min": burst,
                 "median_dwell_ms": median_dwell, "risk": risk, "signals": signals}
 
+    @_transactional
     def answer_inbox(self, item_id, answer, actor="local_user", save_rule=None, dwell_ms=None,
                      origin="tap"):
         item = self.store.query_one("SELECT * FROM attention_items WHERE id=?", (item_id,))
@@ -725,32 +936,68 @@ class SwitchboardService:
             if not (scope.get("mandatory") or {}):
                 raise SwitchboardError(
                     "RULE_SCOPE_REQUIRED", "a standing rule needs a non-empty scope; broad rules are not created silently")
-        self.store.execute("UPDATE attention_items SET status='resolved',updated_at=? WHERE id=?",
-                           (now_iso(), item_id))
-        if item["batch_id"]:
-            self.store.execute(
-                "UPDATE attention_items SET status='resolved',updated_at=? WHERE batch_id=? AND status='queued'",
-                (now_iso(), item["batch_id"]))
+
+        batch_id = item["batch_id"]
+        targets = [(item, q)]
+        if batch_id:
+            batch_rows = self.store.query(
+                "SELECT ai.* FROM attention_items ai WHERE ai.batch_id=? AND ai.status='queued' "
+                "ORDER BY ai.created_at, ai.id", (batch_id,))
+            questions = [(batch_item, self.store.query_one(
+                "SELECT * FROM questions WHERE id=?", (batch_item["question_id"],)))
+                         for batch_item in batch_rows]
+            expected_key = self._attention_decision_key(q)
+            compatible = (len(questions) > 0 and expected_key is not None
+                          and all(child_q and self._attention_decision_key(child_q) == expected_key
+                                  for _, child_q in questions))
+            if compatible:
+                targets = questions
+            else:
+                # Older batches may have been built under weaker compatibility
+                # rules. Split them instead of propagating an answer across
+                # questions whose meaning cannot be proven identical.
+                self.store.execute(
+                    "UPDATE attention_items SET batch_id=NULL WHERE batch_id=? AND status='queued'", (batch_id,))
+                self.store.execute(
+                    "UPDATE attention_batches SET status='closed_incompatible',resolved_at=? WHERE id=?",
+                    (now_iso(), batch_id))
+                batch_id = None
+
         ev = self.add_evidence("human_confirmed", "human", actor, payload_excerpt=str(answer)[:200])
-        # Record a human decision + receipt so the answer is traceable and reusable.
-        cat = self.category(q["category"])
-        did = new_id()
         answer_obj = answer if isinstance(answer, dict) else {"value": str(answer)}
-        self.store.execute(
-            "INSERT INTO decisions(id,question_id,mode,answer_json,reason_code,matcher_tier,score,score_kind,"
-            "category_stage,policy_version,created_at) VALUES(?,?, 'human',?,'human_answered','none',NULL,NULL,?,?,?)",
-            (did, q["id"], json.dumps(answer_obj), cat["stage"], self.cfg.policy_version, now_iso()))
-        rid = new_id()
-        self.store.execute(
-            "INSERT INTO receipts(id,decision_id,receipt_type,why_text,evidence_ids_json,issued_at)"
-            " VALUES(?,?,'answer','human_answered',?,?)", (rid, did, json.dumps([ev]), now_iso()))
-        self.store.emit("human", actor, "attention.item_resolved", "question", item["question_id"],
-                        {"answer": answer_obj, "decision_id": did, "dwell_ms": dwell_ms,
-                         "origin": origin},
-                        evidence_class="human_confirmed")
+        decisions, propagated = [], []
+        for target_item, target_q in targets:
+            cat = self.category(target_q["category"])
+            did, rid = new_id(), new_id()
+            reason = "human_answered" if target_q["id"] == q["id"] else "human_answered_batch"
+            self.store.execute(
+                "INSERT INTO decisions(id,question_id,mode,answer_json,reason_code,matcher_tier,score,score_kind,"
+                "category_stage,policy_version,created_at) VALUES(?,?, 'human',?,?,'none',NULL,NULL,?,?,?)",
+                (did, target_q["id"], json.dumps(answer_obj), reason, cat["stage"],
+                 self.cfg.policy_version, now_iso()))
+            self.store.execute(
+                "INSERT INTO receipts(id,decision_id,receipt_type,why_text,evidence_ids_json,issued_at)"
+                " VALUES(?,?,'answer',?,?,?)", (rid, did, reason, json.dumps([ev]), now_iso()))
+            self.store.execute("UPDATE attention_items SET status='resolved',updated_at=? WHERE id=?",
+                               (now_iso(), target_item["id"]))
+            self.store.emit("human", actor, "attention.item_resolved", "question", target_q["id"],
+                            {"answer": answer_obj, "decision_id": did, "dwell_ms": dwell_ms,
+                             "origin": origin, "batch_id": batch_id,
+                             "source_question_id": q["id"], "propagated": target_q["id"] != q["id"]},
+                            evidence_class="human_confirmed")
+            decisions.append({"question_id": target_q["id"], "decision_id": did, "receipt_id": rid})
+            if target_q["id"] != q["id"]:
+                propagated.append(target_q["id"])
+        if batch_id:
+            self.store.execute(
+                "UPDATE attention_batches SET status='resolved',resolved_at=? WHERE id=? AND status='open'",
+                (now_iso(), batch_id))
         self._record_fresh_evidence(q["category"], json.loads(q["context_json"] or "{}"), "answer_inbox")
-        result = {"item_id": item_id, "evidence_id": ev, "decision_id": did, "receipt_id": rid,
-                  "batch_propagated": bool(item["batch_id"]), "rule": None}
+        primary = next(record for record in decisions if record["question_id"] == q["id"])
+        result = {"item_id": item_id, "evidence_id": ev,
+                  "decision_id": primary["decision_id"], "receipt_id": primary["receipt_id"],
+                  "batch_propagated": bool(propagated), "propagated_question_ids": propagated,
+                  "rule": None}
         if save_rule:
             keywords = [k.strip() for k in (save_rule.get("keywords") or []) if str(k).strip()]
             if keywords:
@@ -773,11 +1020,9 @@ class SwitchboardService:
                     result["rule"] = {**created, "action": "created"}
         return result
 
-    # ---------- V3/V4 risk gate (shadow mode) ----------
-    # Per the research verdict, tiny per-user label counts cannot certify an
-    # error-rate target, so the gate never blocks yet: it estimates the error
-    # rate from human-confirmed labels only, flags would-block answers, and
-    # reports how much evidence enforcement would still need.
+    # ---------- V3/V4 risk gate ----------
+    # Shadow is the compatibility default. Enforce mode blocks automatic
+    # answers until human-confirmed evidence is sufficient and within target.
     RISK_MIN_GOLD = 30
 
     def risk_estimate(self, category: str) -> dict:
@@ -792,10 +1037,13 @@ class SwitchboardService:
         errors = sum(1 for r in rows
                      if str(r["label_value"]).strip().lower() in self._NEGATIVE_OUTCOMES)
         target = cat["risk_target"]
+        gate_mode = getattr(self.cfg, "risk_gate_mode", "shadow")
         if n == 0:
             return {"category": category, "gold_sample": 0, "errors": 0, "error_rate": None,
                     "wilson_upper": None, "risk_target": target,
-                    "gate_state": "insufficient_evidence", "would_block": False, "enforced": False}
+                    "gate_state": "insufficient_evidence", "would_block": False,
+                    "blocked": gate_mode == "enforce", "mode": gate_mode,
+                    "enforced": gate_mode == "enforce"}
         p = errors / n
         z = 1.96
         denom = 1 + z * z / n
@@ -811,16 +1059,19 @@ class SwitchboardService:
         return {"category": category, "gold_sample": n, "errors": errors,
                 "error_rate": round(p, 4), "wilson_upper": round(upper, 4),
                 "risk_target": target, "gate_state": state,
-                "would_block": state == "would_block", "enforced": False}
+                "would_block": state == "would_block",
+                "blocked": gate_mode == "enforce" and state != "within_target",
+                "mode": gate_mode, "enforced": gate_mode == "enforce"}
 
     def gate_readiness(self, category: str) -> dict:
         est = self.risk_estimate(category)
         needed = max(0, self.RISK_MIN_GOLD - est["gold_sample"])
         return {**est, "labels_needed": needed,
                 "can_enforce": needed == 0 and est["gate_state"] != "insufficient_evidence",
-                "note": ("Shadow mode: the gate measures and flags only. Enforcement is a "
-                         "separate human promotion decision once enough human-confirmed "
-                         "labels exist; agent labels never count.")}
+                "note": (("Enforce mode blocks automatic answers while evidence is insufficient or above target. "
+                          "A target is a policy threshold, not a guarantee." if est["mode"] == "enforce" else
+                          "Shadow mode measures and flags only; it does not block automatic answers.") +
+                         " Agent-reported labels never count as human-confirmed evidence.")}
 
     # ---------- V5 silent drift detection ----------
     # The world changed but the rule didn't: question text still matches, so
@@ -906,10 +1157,21 @@ class SwitchboardService:
              sha256_hex(payload_excerpt or ""), payload_excerpt, now_iso()))
         return eid
 
+    @_transactional
     def report_outcome(self, agent, decision_id, outcome, detail=None):
+        if not isinstance(decision_id, str) or not decision_id.strip() or len(decision_id) > 160:
+            raise SwitchboardError("INVALID_SCHEMA", "decision_id must be 1-160 characters")
+        if not isinstance(outcome, str) or not outcome.strip() or len(outcome) > 80:
+            raise SwitchboardError("INVALID_SCHEMA", "outcome must be 1-80 characters")
+        if detail is not None and (not isinstance(detail, str) or len(detail) > 2000):
+            raise SwitchboardError("INVALID_SCHEMA", "detail must be at most 2000 characters")
         dec = self.store.query_one("SELECT * FROM decisions WHERE id=?", (decision_id,))
-        if not dec:
+        owner = (self.store.query_one(
+            "SELECT agent_id FROM questions WHERE id=?", (dec["question_id"],)) if dec else None)
+        if not dec or not owner or owner["agent_id"] != agent["id"]:
             raise SwitchboardError("NOT_FOUND", "decision")
+        if "report_outcome" not in json.loads(agent["scopes_json"]):
+            raise SwitchboardError("FORBIDDEN_SCOPE")
         eid = self.add_evidence("agent_asserted", "agent", agent["id"], payload_excerpt=(detail or outcome)[:200])
         lid = new_id()
         self.store.execute(
@@ -921,6 +1183,7 @@ class SwitchboardService:
         self._drift_check_for_decision(decision_id)
         return {"evidence_id": eid, "label_id": lid, "eligible_for_calibration": False}
 
+    @_transactional
     def confirm_feedback(self, decision_id, label_value, actor="local_user"):
         eid = self.add_evidence("human_confirmed", "human", actor, payload_excerpt=str(label_value)[:200])
         lid = new_id()
@@ -940,45 +1203,135 @@ class SwitchboardService:
         return {"evidence_id": eid, "label_id": lid, "eligible_for_calibration": True}
 
     # ---------- dependencies / blast radius ----------
+    @_transactional
     def record_use(self, agent, receipt_id, dependent_type, dependent_id, relationship, status="pending"):
+        if status not in ("pending", "completed", "failed", "unknown", "unaffected"):
+            raise SwitchboardError(
+                "INVALID_SCHEMA", "dependency status must be pending, completed, failed, unknown, or unaffected")
+        normalized = []
+        for value, name in ((dependent_type, "dependent_type"), (dependent_id, "dependent_id"),
+                            (relationship, "relationship")):
+            if not isinstance(value, str) or not value.strip() or len(value) > 160:
+                raise SwitchboardError("INVALID_SCHEMA", f"{name} must be 1-160 characters")
+            normalized.append(value.strip())
+        dependent_type, dependent_id, relationship = normalized
         rec = self.store.query_one("SELECT * FROM receipts WHERE id=?", (receipt_id,))
-        if not rec:
+        owner = (self.store.query_one(
+            "SELECT q.agent_id FROM decisions d JOIN questions q ON q.id=d.question_id "
+            "WHERE d.id=?", (rec["decision_id"],)) if rec else None)
+        if not rec or not owner or owner["agent_id"] != agent["id"]:
             raise SwitchboardError("NOT_FOUND", "receipt")
-        did = new_id()
-        self.store.execute(
-            "INSERT OR IGNORE INTO decision_dependencies(id,source_receipt_id,dependent_type,dependent_id,"
-            "relationship,observed_by,evidence_class,created_at,status) VALUES(?,?,?,?,?,'agent','agent_asserted',?,?)",
-            (did, receipt_id, dependent_type, dependent_id, relationship, now_iso(), status))
+        if rec["receipt_type"] != "answer":
+            raise SwitchboardError("INVALID_SCHEMA", "only answer receipts can have downstream dependencies")
+        if rec["revoked_at"] is not None:
+            raise SwitchboardError("GRANT_REVOKED", "receipt has been revoked")
+        if rec["expires_at"] and rec["expires_at"] < now_iso():
+            raise SwitchboardError("GRANT_EXPIRED", "receipt has expired")
+        if "record_use" not in json.loads(agent["scopes_json"]):
+            raise SwitchboardError("FORBIDDEN_SCOPE")
+        existing = self.store.query_one(
+            "SELECT id,status FROM decision_dependencies WHERE source_receipt_id=? AND dependent_type=? "
+            "AND dependent_id=? AND relationship=?",
+            (receipt_id, dependent_type, dependent_id, relationship))
+        prior_status = existing["status"] if existing else None
+        dependency_id = existing["id"] if existing else new_id()
+        if existing:
+            if prior_status == status:
+                return {"dependency_id": dependency_id, "coverage": "partial_agent_reported", "status": status}
+            self.store.execute(
+                "UPDATE decision_dependencies SET status=?,observed_by='agent',evidence_class='agent_asserted' "
+                "WHERE id=?", (status, dependency_id))
+        else:
+            self.store.execute(
+                "INSERT INTO decision_dependencies(id,source_receipt_id,dependent_type,dependent_id,"
+                "relationship,observed_by,evidence_class,created_at,status)"
+                " VALUES(?,?,?,?,?,'agent','agent_asserted',?,?)",
+                (dependency_id, receipt_id, dependent_type, dependent_id, relationship, now_iso(), status))
         self.store.emit("agent", agent["id"], "decision.dependency_recorded", "receipt", receipt_id,
-                        {"dependent_id": dependent_id}, evidence_class="agent_asserted")
-        return {"dependency_id": did, "coverage": "partial_agent_reported"}
+                        {"dependent_type": dependent_type, "dependent_id": dependent_id,
+                         "previous_status": prior_status, "status": status}, evidence_class="agent_asserted")
+        return {"dependency_id": dependency_id, "coverage": "partial_agent_reported", "status": status}
 
     def blast_radius(self, rule_id):
+        active_row = self.store.query_one(
+            "SELECT rv.* FROM rules r JOIN rule_versions rv ON rv.id=r.active_version_id WHERE r.id=?",
+            (rule_id,))
         versions = [v["id"] for v in self.store.query("SELECT id FROM rule_versions WHERE rule_id=?", (rule_id,))]
-        if not versions:
+        if not versions or not active_row:
             raise SwitchboardError("NOT_FOUND", "rule")
+        active = dict(active_row)
+        active["_predicate"] = json.loads(active["predicate_json"])
+        active["_answer"] = json.loads(active["answer_json"])
+        active["_scope"] = json.loads(active["scope_json"])
         ph = ",".join("?" * len(versions))
         uses = self.store.query(
-            f"SELECT DISTINCT d.id as decision_id, d.mode, d.created_at FROM decision_rule_uses dru"
-            f" JOIN decisions d ON d.id=dru.decision_id WHERE dru.rule_version_id IN ({ph})", versions)
+            f"SELECT DISTINCT d.id as decision_id, d.mode, d.answer_json, q.question_text, q.category,"
+            f" q.intent_type, q.context_json, rv.answer_json AS used_answer_json "
+            f"FROM decision_rule_uses dru JOIN decisions d ON d.id=dru.decision_id "
+            f"JOIN questions q ON q.id=d.question_id "
+            f"JOIN rule_versions rv ON rv.id=dru.rule_version_id "
+            f"WHERE dru.rule_version_id IN ({ph})"
+            " AND d.mode IN ('auto','warn')", versions)
         items = []
         for u in uses:
+            changed = self._rule_effect_changed(active, u)
             rec = self.store.query_one("SELECT id FROM receipts WHERE decision_id=?", (u["decision_id"],))
             deps = self.store.query("SELECT * FROM decision_dependencies WHERE source_receipt_id=?",
                                     (rec["id"],)) if rec else []
             if deps:
                 for dep in deps:
-                    status = ("revalidate" if dep["status"] == "pending"
-                              else "review_completed" if dep["status"] == "completed" else "unaffected")
+                    status = self._dependency_impact_status(dep["status"], changed)
                     items.append({"decision_id": u["decision_id"], "dependent_id": dep["dependent_id"],
-                                  "dependent_type": dep["dependent_type"], "proposed_status": status})
+                                  "dependent_type": dep["dependent_type"], "proposed_status": status,
+                                  "rule_effect_changed": changed})
             else:
                 items.append({"decision_id": u["decision_id"], "dependent_id": None,
-                              "proposed_status": "unknown_dependency_coverage"})
+                              "proposed_status": "unknown_dependency_coverage",
+                              "rule_effect_changed": changed})
         return {"rule_id": rule_id, "affected": items,
                 "coverage_caveat": "Bounded by recorded dependency edges; absence of an edge is not proof of no impact."}
 
+    def _rule_effect_changed(self, active, use):
+        """Compare the current rule to the answer and context of the old decision.
+
+        This is deterministic and local. A rule that no longer matches, is out
+        of scope, or now produces a different answer is treated as changed.
+        """
+        context = json.loads(use["context_json"] or "{}")
+        predicate = active["_predicate"]
+        if predicate.get("category") and predicate["category"] != use["category"]:
+            return True
+        if predicate.get("intent_type") and predicate["intent_type"] != use["intent_type"]:
+            return True
+        if not evaluate_scope(active["_scope"], context)["valid"]:
+            return True
+        candidate = self.ladder.t0.match(use["question_text"], use["category"],
+                                         use["intent_type"], [active])
+        if candidate is None:
+            candidate = self.ladder.t1.match(use["question_text"], use["category"],
+                                             use["intent_type"], [active])
+        if not candidate or candidate.get("ambiguous"):
+            return True
+        try:
+            old_answer = json.loads(use["answer_json"] or "null")
+        except (TypeError, ValueError):
+            old_answer = None
+        return canonical_json(active["_answer"]) != canonical_json(old_answer)
+
+    @staticmethod
+    def _dependency_impact_status(status, changed):
+        if status == "unknown":
+            return "unknown_dependency_coverage"
+        if status == "unaffected" or not changed:
+            return "unaffected"
+        return {
+            "pending": "revalidate",
+            "completed": "review_completed",
+            "failed": "review_failed",
+        }.get(status, "unknown_dependency_coverage")
+
     # ---------- away grants ----------
+    @_transactional
     def create_away_grant(self, categories, allowed_intents, expires_at, actor="local_user"):
         gid = new_id()
         self.store.execute(
@@ -989,6 +1342,7 @@ class SwitchboardService:
         self.store.emit("human", actor, "away.grant_created", "away_grant", gid, {"expires_at": expires_at})
         return {"grant_id": gid, "expires_at": expires_at}
 
+    @_transactional
     def revoke_away_grant(self, grant_id, actor="local_user"):
         self.store.execute("UPDATE away_grants SET revoked_at=?,status='revoked' WHERE id=?", (now_iso(), grant_id))
         self.store.emit("human", actor, "away.grant_revoked", "away_grant", grant_id, {})
@@ -1032,6 +1386,7 @@ class SwitchboardService:
             count=False)
         return data
 
+    @_transactional
     def run_canary(self, category, case_id, expected, observed, run_type="shadow"):
         passed = 1 if expected == observed else 0
         self.store.execute(
@@ -1074,6 +1429,7 @@ class SwitchboardService:
             out.append({"edge": edge, "label": label[:80], "expected_effect": effect[:200]})
         return out
 
+    @_transactional
     def submit_proposal(self, agent, title, proposal_text, category, directions, project=None) -> dict:
         title = str(title or "").strip()
         proposal_text = str(proposal_text or "").strip()
@@ -1175,6 +1531,7 @@ class SwitchboardService:
             r, {"id": r["aid"], "name": r["aname"], "kind": r["akind"]},
             by_rev.get(r["id"], []), by_ev.get(r["id"], []), locked_map) for r in rows]
 
+    @_transactional
     def steer(self, session_id, edge=None, magnitude=1, actor="local_user", request_text=None) -> dict:
         """Record one bounded steer request. It never resolves or authorizes the proposal."""
         s = self.store.query_one("SELECT * FROM steering_sessions WHERE id=?", (session_id,))
@@ -1217,6 +1574,7 @@ class SwitchboardService:
                         instruction, evidence_class="human_confirmed")
         return {"instruction": instruction, "session": self.steering_session(session_id)}
 
+    @_transactional
     def revise_proposal(self, agent, session_id, proposal_text, note=None) -> dict:
         """Agent answers a steer with a new version. Only the owning agent."""
         s = self.store.query_one("SELECT * FROM steering_sessions WHERE id=? AND agent_id=?",
@@ -1240,6 +1598,7 @@ class SwitchboardService:
                         session_id, {"version": version})
         return self.steering_session(session_id)
 
+    @_transactional
     def resolve_steering(self, session_id, outcome, actor="local_user") -> dict:
         """The deliberate close: accept or reject. Deliberately separate from steer()."""
         if outcome not in ("accepted", "rejected"):
@@ -1292,6 +1651,7 @@ class SwitchboardService:
                 for c, v in sorted(counts.items())]
 
     # ---------- sandbox action review ----------
+    @_transactional
     def request_action_review(self, agent, action: dict, expires_at=None):
         canonical = canonical_json(action)
         ahash = sha256_hex(canonical)
@@ -1302,12 +1662,24 @@ class SwitchboardService:
         self.store.emit("agent", agent["id"], "action.review_requested", "action_review", aid, {"hash": ahash})
         return {"review_id": aid, "action_hash": ahash, "status": "held"}
 
+    @_transactional
     def approve_action(self, review_id, actor="local_user"):
-        self.store.execute("UPDATE action_reviews SET status='approved',approved_by=?,approved_at=? WHERE id=?",
-                           (actor, now_iso(), review_id))
+        now = now_iso()
+        cur = self.store.execute(
+            "UPDATE action_reviews SET status='approved',approved_by=?,approved_at=? "
+            "WHERE id=? AND status='held' AND (expires_at IS NULL OR expires_at>=?)",
+            (actor, now, review_id, now))
+        if cur.rowcount != 1:
+            row = self.store.query_one("SELECT id,expires_at FROM action_reviews WHERE id=?", (review_id,))
+            if not row:
+                raise SwitchboardError("NOT_FOUND", "action review")
+            if row["expires_at"] and row["expires_at"] < now:
+                raise SwitchboardError("GRANT_EXPIRED")
+            raise SwitchboardError("CONFLICT", "action review is not held")
         self.store.emit("human", actor, "action.approved", "action_review", review_id, {})
         return self.store.query_one("SELECT * FROM action_reviews WHERE id=?", (review_id,))
 
+    @_transactional
     def verify_action_execution(self, review_id, actual_action: dict):
         row = self.store.query_one("SELECT * FROM action_reviews WHERE id=?", (review_id,))
         if not row:
@@ -1322,6 +1694,11 @@ class SwitchboardService:
             raise SwitchboardError("LOCKED_ACTION", "already executed (one-use)")
         if row["expires_at"] and row["expires_at"] < now_iso():
             raise SwitchboardError("GRANT_EXPIRED")
-        self.store.execute("UPDATE action_reviews SET executed_at=?,status='executed' WHERE id=?",
-                           (now_iso(), review_id))
+        now = now_iso()
+        cur = self.store.execute(
+            "UPDATE action_reviews SET executed_at=?,status='executed' "
+            "WHERE id=? AND status='approved' AND executed_at IS NULL "
+            "AND (expires_at IS NULL OR expires_at>=?)", (now, review_id, now))
+        if cur.rowcount != 1:
+            raise SwitchboardError("LOCKED_ACTION", "review already consumed or expired")
         return {"executed": True, "action_hash": actual_hash}

@@ -93,6 +93,7 @@ def test_taste_profile_counts_leans(svc_agent):
     svc.steer(s["id"], "left")
     svc.revise_proposal(agent, s["id"], "v2")
     svc.steer(s["id"], "left")
+    svc.revise_proposal(agent, s["id"], "v3")
     svc.steer(s["id"], "bottom")
     taste = svc.taste_profile("purchase")
     assert taste == [{"category": "purchase", "leans": [["Cheaper", 2], ["Simplify", 1]]}]
