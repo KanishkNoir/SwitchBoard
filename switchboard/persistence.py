@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS questions(
   intent_type TEXT NOT NULL, risk_class TEXT NOT NULL, reversibility TEXT NOT NULL,
   deadline_at TEXT, options_json TEXT, context_json TEXT, status TEXT NOT NULL,
   created_at TEXT NOT NULL, parent_receipts_json TEXT NOT NULL DEFAULT '[]',
+  risk_hint TEXT,
   UNIQUE(agent_id, request_id));
 CREATE TABLE IF NOT EXISTS rules(
   id TEXT PRIMARY KEY, category TEXT NOT NULL, created_at TEXT NOT NULL,
@@ -68,7 +69,8 @@ CREATE TABLE IF NOT EXISTS decisions(
   id TEXT PRIMARY KEY, question_id TEXT NOT NULL REFERENCES questions(id),
   mode TEXT NOT NULL, answer_json TEXT, reason_code TEXT NOT NULL, matcher_tier TEXT NOT NULL,
   score REAL, score_kind TEXT, category_stage TEXT NOT NULL, policy_version TEXT NOT NULL,
-  latency_ms INTEGER, model_tokens_in INTEGER, model_tokens_out INTEGER, created_at TEXT NOT NULL);
+  latency_ms INTEGER, model_tokens_in INTEGER, model_tokens_out INTEGER, created_at TEXT NOT NULL,
+  policy_trace_json TEXT NOT NULL DEFAULT '{}');
 CREATE TABLE IF NOT EXISTS decision_rule_uses(
   decision_id TEXT NOT NULL REFERENCES decisions(id), rule_version_id TEXT NOT NULL REFERENCES rule_versions(id),
   match_type TEXT NOT NULL, scope_result_json TEXT NOT NULL, PRIMARY KEY(decision_id, rule_version_id));
@@ -184,6 +186,12 @@ class Store:
         if question_cols and "parent_receipts_json" not in question_cols:
             self.conn.execute(
                 "ALTER TABLE questions ADD COLUMN parent_receipts_json TEXT NOT NULL DEFAULT '[]'")
+        if question_cols and "risk_hint" not in question_cols:
+            self.conn.execute("ALTER TABLE questions ADD COLUMN risk_hint TEXT")
+        decision_cols = {r[1] for r in self.conn.execute("PRAGMA table_info(decisions)")}
+        if decision_cols and "policy_trace_json" not in decision_cols:
+            self.conn.execute(
+                "ALTER TABLE decisions ADD COLUMN policy_trace_json TEXT NOT NULL DEFAULT '{}' ")
         self.conn.commit()
         # Bound the WAL: SQLite auto-checkpoints past this size instead of
         # accumulating an unrecoverable multi-megabyte backlog on the volume.

@@ -1,121 +1,141 @@
 # Switchboard
 
-### Your agents learn when to ask.
+### A shared decision service for AI agents.
 
-Every AI agent you run asks you questions. The same questions. In different words. At the worst possible moments.
+AI agents often ask the same person the same questions. They may repeat a question in different words, or reuse an old answer in a new context.
 
-One asks which deploy target. Another asks again an hour later. A third applies yesterday's answer to today's completely different situation — confidently, and wrong.
+Switchboard gives compatible agents one place to check for current answers and ask questions they cannot safely resolve. It applies answers only within their defined scope, records how decisions were made, and sends unresolved questions to a shared inbox.
 
-**Switchboard is the layer that fixes this.** It sits between you and your agents, remembers what you actually decided, knows exactly where each decision applies (and where it doesn't), and only interrupts you when interrupting you is genuinely worth it.
+## The problem
 
-> The scarce resource in a multi-agent workflow isn't compute. It isn't context. **It's your attention.**
-> Switchboard treats your attention like it matters.
-
----
-
-## Your morning, before and after
-
-**Without Switchboard:**
+Without a shared decision service, each agent asks the user separately:
 
 ```mermaid
 flowchart LR
-    A[🤖 Agent 1] -->|Which hotel budget?| Y[😩 You]
-    B[🤖 Agent 2] -->|Hotel budget??| Y
-    C[🤖 Agent 3] -->|Budget for the hotel?| Y
-    Y -->|same answer, third time| A
-    Y -->|same answer, third time| B
-    Y -->|same answer, third time| C
+    A[Agent 1] -->|Hotel budget?| Y[User]
+    B[Agent 2] -->|Budget for the hotel?| Y
+    C[Agent 3] -->|Hotel budget?| Y
 ```
 
-**With Switchboard:**
+With Switchboard, agents check the same decision service:
 
 ```mermaid
 flowchart LR
-    A[🤖 Agent 1] --> S
-    B[🤖 Agent 2] --> S
-    C[🤖 Agent 3] --> S
-    S[🎛️ Switchboard] -->|knows already — no bother| A
-    S -->|knows already — no bother| B
-    S -->|one real question| Y[🙂 You]
-    Y -->|answer once| S
+    A[Agent 1] --> S[Switchboard]
+    B[Agent 2] --> S
+    C[Agent 3] --> S
+    S -->|Current answer applies| A
+    S -->|Current answer applies| B
+    S -->|Needs a decision| Y[User]
+    Y -->|Answer once| S
 ```
 
-You answer the question **once**. Every agent hears it. That's the whole idea.
+The user answers once when an existing answer does not apply. Switchboard then gives the result to agents that ask the same question within the same scope.
 
-## What it actually does
+## What Switchboard does
 
-**Ask less — not blindly less.**
-Agents ask Switchboard first. If you've already answered this, in this scope, with a rule that's still current — the agent gets the answer instantly, with a receipt. You never see the question. If not, the question joins a priority queue where truly identical questions are merged into one card. You answer once; every waiting agent gets it.
+### Reuses answers within their scope
 
-**Corrections that understand blast radius.**
-Change your mind about a preference, and Switchboard doesn't just update a note. It finds *every previous decision that relied on the old rule*, flags the pending ones for revalidation, and shows you the list. No more stale assumptions quietly compounding downstream.
+An agent can ask Switchboard before it asks the user. If a current answer applies to that agent and context, Switchboard returns it with a receipt. If there is no suitable answer, the question enters a priority queue. Equivalent questions can be grouped so the user can answer once for the waiting agents.
 
-Changed your mind? Here's who finds out:
+### Tracks the effect of corrections
+
+When a user changes a preference, Switchboard finds decisions that depended on the previous answer. It marks affected pending work for review and shows the user which decisions may need attention. Completed work is shown for review when its status cannot be determined.
 
 ```mermaid
 flowchart LR
-    OLD[💬 Old preference<br/>'aisle seat, always'] --> T1[✈️ Flight booked]
-    OLD --> T2[🧳 Trip plan]
-    OLD --> T3[📧 Email draft]
-    YOU[✋ You: 'actually, window now'] --> NEW[💬 New preference]
-    NEW -.->|replaces| OLD
-    T1 -.->|not flown yet| FIX[🔄 Checked again]
-    T2 -.->|already done| LOOK[👀 Shown to you]
-    T3 -.->|not sure it was affected| Q[❓ Honestly flagged<br/>never hidden]
+    OLD[Previous answer: aisle seat] --> D1[Flight decision]
+    OLD --> D2[Trip plan]
+    OLD --> D3[Email draft]
+    USER[User corrects answer: window seat] --> NEW[Current answer]
+    NEW -. replaces .-> OLD
+    D1 -->|Pending| CHECK[Check again]
+    D2 -->|Completed| REVIEW[Show for review]
+    D3 -->|Effect unclear| FLAG[Flag for review]
 ```
 
-**Preferences that know their boundaries.**
-"Use staging" was your answer *for staging*. When an agent tries to reuse it in production just because the words look similar, Switchboard blocks it. Scope is checked *before* similarity — a hard boundary, not a vibe.
+### Checks context boundaries
 
-**Evidence with a chain of custody.**
-An agent claiming "it worked" is not the same as you confirming it, and Switchboard never pretends otherwise. Agent self-reports, model guesses, and synthetic test data are quarantined by design. Only human-confirmed evidence can teach the system anything.
+An answer for staging should not apply to production just because the question uses similar words. Switchboard checks scope before it uses similarity to match an answer.
 
-**Autonomy you can read.**
-Every category lives in one of three stages — `shadow` (watching), `suggest` (asking), `auto` (acting) — and its Autonomy Passport tells you exactly why, on what evidence, with what limits. When a correction lands, the flipped slice goes back on probation automatically. No silent promotions. No mystery confidence scores.
+### Separates user evidence from agent claims
 
-Think of it like a new assistant earning trust:
-
-```mermaid
-flowchart LR
-    A[👀 Watching<br/>learns silently] --> B[🙋 Asking<br/>'shall I?']
-    B --> C[✅ Trusted<br/>handles it alone]
-    C -->|you correct it| D[🧑‍🏫 Probation<br/>proves it again]
-    D -->|gets it right| C
-    D -->|gets it wrong| A
-```
-
----
-
-## What happens when an agent asks
+An agent report that an action worked is not the same as a user confirming the result. Agent reports, model estimates, and synthetic test data are stored as lower-trust evidence. They do not count as user-confirmed evidence.
 
 ```mermaid
 flowchart TD
-    Q[🤖 'Can I book the cheap flight?'] --> SAFE{Is it risky?<br/>money, deleting, sending}
-    SAFE -->|yes| YOU1[🙋 Asks you first<br/>always]
-    SAFE -->|no| KNOW{Have you answered<br/>this before?}
-    KNOW -->|not really| YOU2[🙋 Asks you<br/>nicely, once]
-    KNOW -->|yes| FIT{Does that answer<br/>still fit here?}
-    FIT -->|wrong place / changed| YOU2
-    FIT -->|fits perfectly| GO[✅ Done<br/>with a receipt you can check]
+    USER[User confirms or corrects] -->|Can guide decisions| TRUSTED[User-confirmed evidence]
+    TOOL[Tool event] -->|Shows an action occurred| ACTION[Action evidence]
+    AGENT[Agent report] -->|Unverified| LOWER[Lower-trust evidence]
+    MODEL[Model estimate or synthetic data] -->|Not user-confirmed| LOWER
 ```
 
-Four questions, in order: *Is it risky? Have we covered this? Does the old answer still fit?* Only then does anything happen without you.
+### Shows the current autonomy level
 
-And when it can't answer safely? **It defers. Every time.** Locked actions — money, deletions, messages to new recipients, anything irreversible — *always* come to you in v1. No exceptions, no learned overrides, no Away-mode bypass.
+The Autonomy Passport shows each category's current stage: `shadow` (log the result), `suggest` (ask the user), `warn` (return an answer with a notice), or `auto` (return an answer without asking). It also shows the evidence and limits behind that stage. After a correction, the affected part of a category returns to probation before it can regain trust.
 
----
+## How a question is handled
 
-## The visual side
+```mermaid
+flowchart TD
+    Q[Agent asks a question] --> SAFE{Is the action locked or risky?}
+    SAFE -->|Yes| HUMAN[Ask the user]
+    SAFE -->|No| MATCH{Is there a current answer?}
+    MATCH -->|No| HUMAN
+    MATCH -->|Yes| SCOPE{Does the answer fit this context?}
+    SCOPE -->|No| HUMAN
+    SCOPE -->|Yes| USE[Return the answer with a receipt]
+```
 
-Switchboard asks questions with pictures, not just text.
+Switchboard checks risk, existing answers, and scope before returning an answer. If it cannot resolve a question safely, it defers to the user.
 
-- **Visual Scout** takes an image, segments the objects in it with **SAM 3.1**, and asks one focused question about the actual thing you pointed at — click the lamp, and its real pixel mask lights up.
-- **Muse Image** generates and edits concept previews as you steer: cheaper ← → more comfort, explore ↑, keep it simple ↓. Four edges, labels written for *this* question, driven by swipe, click, or arrow keys.
-- Generated images are always labelled as concepts. Never dressed up as real listing photos. Prices and facts come from real inputs or are marked unknown.
+Locked actions include payments, deletions, messages to new recipients, and other irreversible actions. In version 1, these actions always require a user decision. Rules and learned preferences cannot override that requirement. Away mode cannot bypass it.
 
-Gestures steer. They never authorize. A swipe can reshape a proposal — it cannot buy, send, or delete anything.
+## Architecture and feature boundaries
 
----
+The web API and MCP server use the same request pipeline. They do not maintain separate rule or permission engines.
+
+```mermaid
+flowchart LR
+    CLIENT[Agent or web interface] --> ADAPTER[REST or MCP adapter]
+    ADAPTER --> VALIDATE[Validate and normalize request]
+    VALIDATE --> CORE[Risk, scope, and rule checks]
+    MODEL[Optional model] -. selects an eligible rule candidate .-> CORE
+    CORE --> GOVERN[Configured category stage and risk gate]
+    GOVERN --> RESULT[Answer, suggestion, or defer]
+    GOVERN --> LEDGER[(SQLite decision ledger)]
+    RESULT --> LEDGER
+```
+
+The model can help select an existing eligible rule when optional semantic matching is enabled. The application checks risk, scope, authorization, and the category stage. A model cannot create or activate a rule, lower a risk classification, or authorize an action.
+
+The features have separate roles:
+
+- **MCP and REST** connect agents and the web interface to the same decision service.
+- **Harness-specific action gates** can check a tool call before an agent executes it. MCP support alone does not intercept every tool call.
+- **Steering** changes a proposal draft. It does not approve or execute the proposal. Approval is a separate user action.
+- **The Autonomy Passport** shows the category's current stage, evidence, and limits. It reports policy state; it is not a second permission system.
+- **Hard locks** always require a user decision. The category risk gate is a separate check that can defer when evidence is insufficient or outside its target.
+
+### What has changed in the backend
+
+Each decision now stores a versioned, privacy-minimized policy trace. It records the policy versions, risk reasons, effective category stage, matcher tier, selected rule version, scope result, and decision reason. It stores a fingerprint of request context instead of copying raw context into the trace.
+
+Request identity includes permission-relevant risk hints and option values. A request that changes one of these values is treated as a different request. An agent may mark a request as `locked`, which can raise the server's risk classification. An agent cannot use a hint to lower it. The supported hints are validated at the API, MCP, and remote interfaces.
+
+Optional hosted models may select an existing rule candidate. They do not provide calibrated confidence scores. The system does not treat a model's self-reported confidence as a probability.
+
+### Adaptive policy work is still in progress
+
+The current code adds decision traces and safer request validation. It does not yet let AI change active autonomy policies. Category stages remain configured, and locks stay under deterministic application control. The planned policy registry, evidence-based proposals, shadow evaluation, and measured promotion are future work. A policy change will need validation and outcome evidence before it can affect live decisions.
+
+## Visual features
+
+- **Visual Scout** uses SAM 3.1 to segment objects in an image. The user can select an object, such as a lamp, and ask a question about it.
+- **Muse Image** can generate or edit concept previews while the user steers a proposal. The four directions can represent cheaper, more comfortable, less obvious, or simpler options.
+- Generated images are labelled as concepts. They are not presented as real product photos. Prices and other facts come from user-provided data or are marked unknown.
+
+Gestures can change a proposal. They cannot approve a purchase, send a message, or delete data.
 
 ## Quickstart
 
@@ -126,110 +146,88 @@ uv run python -m switchboard.app
 
 Open **http://127.0.0.1:8765** in your browser.
 
-Local-first, always: the ledger lives on your machine, model calls are opt-in, and every provider failure results in a deferral — never a guessed answer.
+By default, the decision ledger is stored on your machine. Model calls are optional. If a model provider fails, Switchboard defers instead of guessing.
 
-### On your phone (no app needed)
+### Use the interface on your phone
 
-Switchboard's interface is a mobile-friendly web app. To reach it from your phone,
-run the tunnel script and open the one-time login link it prints:
+The web interface supports mobile screens. To access it from a phone, run the tunnel script and open the login link it prints:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/start-tunnel.ps1
 ```
 
-That link signs your phone in (30-day cookie). Treat it like a password — anyone
-with it can act as you. The UI refuses all access without that login whenever a
-`SWITCHBOARD_UI_TOKEN` is set, which the script always does.
+The link signs the phone in and creates a 30-day cookie. Treat the link like a password. Anyone who has it can access the workspace as you. When `SWITCHBOARD_UI_TOKEN` is set, the interface requires login. The tunnel script sets this token.
 
-## Connect your agents (MCP)
+## Connect agents with MCP
 
-Register an agent in the UI (**Agents & rules** tab), put its key in the agent's environment, and point it at Switchboard:
+Register an agent in the **Agents & rules** tab. Put its key in the agent's environment, then start the Switchboard MCP server:
 
 ```powershell
 $env:SWITCHBOARD_AGENT_KEY = "sb_..."
-uv run python -m switchboard.mcp_server          # stdio
-# or
-$env:SWITCHBOARD_MCP_TRANSPORT = "streamable-http"  # http://127.0.0.1:8766/mcp
 uv run python -m switchboard.mcp_server
 ```
 
-MCP tools: `ask`, `get_rules`, `get_action_request_status`, `report_outcome`, and `record_use`. Agent identity comes from credentials, never from payload JSON. A workspace `.mcp.json` is included for MCP-compatible clients, and a working demo harness lives in `harness/`.
+The default transport is stdio. To use Streamable HTTP instead, set the transport variable and start the server:
 
-For an automatic OpenCode pre-tool gate, see [integrations/OPENCODE_ACTION_GATE.md](integrations/OPENCODE_ACTION_GATE.md). It blocks non-read-only tool calls until Switchboard returns an explicit allow.
+```powershell
+$env:SWITCHBOARD_MCP_TRANSPORT = "streamable-http"
+uv run python -m switchboard.mcp_server
+```
 
-For an automatic Claude Code pre-tool gate, see [integrations/CLAUDE_CODE_ACTION_GATE.md](integrations/CLAUDE_CODE_ACTION_GATE.md). It routes state-changing calls and user questions through Switchboard.
+The HTTP endpoint is **http://127.0.0.1:8766/mcp**.
 
-For frontend development:
+The MCP tools are `ask`, `get_rules`, `get_action_request_status`, `report_outcome`, and `record_use`. Switchboard identifies an agent from its credentials, not from a name in the request. The repository includes a `.mcp.json` example for compatible clients and a demo harness in `harness/`.
+
+Some integrations also add a pre-tool gate. For details, see the [OpenCode action gate](integrations/OPENCODE_ACTION_GATE.md) and [Claude Code action gate](integrations/CLAUDE_CODE_ACTION_GATE.md). These gates are harness-specific. MCP support alone does not intercept every action an agent can take.
+
+### Run the frontend during development
 
 ```powershell
 cd frontend
 npm install
-npm run dev      # http://127.0.0.1:5173, proxies the API to :8765
-npm run build    # FastAPI serves the build at /
+npm run dev      # http://127.0.0.1:5173, proxies API requests to :8765
+npm run build    # FastAPI serves the built frontend at /
 ```
 
----
+## Evaluation results
 
-## Does it work? Here's the evidence — including where it doesn't.
+The replay harness compares four strategies using the same synthetic preference-change traces. The table reports how often each strategy answered without asking, how many wrong answers it gave, and how often it kept using an old preference.
 
-Our replay harness runs identical synthetic preference-flip traces against four strategies. After a user changes a preference:
-
-| Approach | Questions handled alone | Wrong answers | Still using your old preference |
-|---|---|---|---|
+| Approach | Questions handled without asking | Wrong answers | Old preference reused |
+|---|---:|---:|---:|
 | Never learns (B0) | 91% | 8 | 8 |
 | Learns instantly, no probation (B1) | 91% | 0 | 0 |
-| **Switchboard (B2)** | **73%** | **0** | **0** |
-| Switchboard + trust checks (B3) | **73%** | **0** | **0** |
-
-B2 trades some coverage for safety: after a correction, the flipped slice serves a short probation — a handful of confirmations — while everything unrelated keeps flowing. Under a *noisy* first correction (the fix itself is wrong), that probation measurably wins: 2 wrong auto-answers vs B1's 3. Under a *misscoped* correction, both fail — a hold cannot fix a scope the system was never told, and we show that result instead of hiding it.
-
-Adversarial agents flooding fake "it worked" reports? Measured: a naive system that counts agent labels gets contaminated; Switchboard's count stays at zero.
-
-In plain terms — you change your mind, then we count how often each approach still gives the *old* answer:
+| Switchboard (B2) | 73% | 0 | 0 |
+| Switchboard with trust checks (B3) | 73% | 0 | 0 |
 
 ```mermaid
 xychart-beta
-    title "Oops moments after you change your mind (fewer is better)"
+    title "Old preference reused after correction"
     x-axis [Never learns, Learns instantly, Switchboard]
-    y-axis "Wrong answers" 0 --> 9
+    y-axis "Old answers reused" 0 --> 9
     bar [8, 0, 0]
 ```
 
-And not everyone's word counts the same. Here's the trust ladder:
+In these traces, B2 asks more often after a correction. That reduces coverage while the changed preference is checked again. In a scenario where the first correction is wrong, probation produced 2 wrong automatic answers, compared with 3 for B1. When a correction has the wrong scope, both approaches can fail because the system was not given the right boundary.
 
-```mermaid
-flowchart TD
-    A[🙋 You said it] -->|trusted| T[✅ Can teach Switchboard]
-    B[✋ You corrected it] -->|trusted| T
-    C[🔧 A tool proved it happened] -->|partly| P[📋 Proves actions, not wishes]
-    D[🤖 An agent said 'trust me'] -->|not enough| Q[🚧 Kept aside]
-    E[🎲 A model guessed it] -->|not enough| Q
-```
+A separate adversarial trace sends false success reports from agents. A strategy that trusts agent reports becomes contaminated. Switchboard does not count those reports as user-confirmed evidence.
 
-These are synthetic traces, labelled as such, with uncertainty intervals — not a population error guarantee. Anyone who promises you a proven 2% error rate from eleven questions is selling something. We'd rather show the trade-off.
+These results come from synthetic traces, not real users. The sample is small, and the results do not establish a production error rate or guarantee a 2% mistake rate. They show the trade-offs in the tested scenarios.
 
-## Test
+## Run the test suite
 
 ```powershell
 uv run pytest -q
 ```
 
-40 tests, including a real subprocess MCP-over-HTTP integration test.
-
----
+The suite includes a subprocess integration test for MCP over HTTP.
 
 ## Optional model providers
 
-All behind feature flags, all failing safe to a deferral:
+Model providers are optional and controlled by feature flags. Provider failures result in a deferral.
 
 | Provider | Role | Model |
 |---|---|---|
-| Modal | reasoning (T3) | Muse-Spark-Open-816B-A42B (self-hosted endpoint) |
-| Baseten | reasoning (T3) | `meta-models/muse-spark-open-1026` |
-| Meta Model API | reasoning + SAM 3.1 + Muse Image | `muse-spark-1.3`, `sam-3.1`, `muse-image-1.0` |
-
-Deterministic logic — locks, scope, matching tiers, receipts, authorization — is never delegated to a generative model.
-
----
-
-*Switchboard doesn't replace your agents. It teaches them the one skill they all lack: knowing when to ask.*
+| Modal | Reasoning (T3) | Muse-Spark-Open-816B-A42B (self-hosted endpoint) |
+| Baseten | Reasoning (T3) | `meta-models/muse-spark-open-1026` |
+| Meta Model API | Reasoning, SAM 3.1, and Muse Image | `muse-spark-1.3`, `sam-3.1`, `muse-image-1.0` |

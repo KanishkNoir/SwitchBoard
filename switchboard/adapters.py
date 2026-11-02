@@ -43,7 +43,7 @@ class BasetenReasoningAdapter:
                       for rv in rule_versions]
         out = self.generate(
             f"Question: {question_text}\nCandidates: {json.dumps(candidates)}\n"
-            'Reply {"rule_version_id": "<id or null>", "confidence": 0..1}')
+            'Reply {"rule_version_id": "<id or null>"}. Do not include confidence.')
         if not out:
             return None
         try:
@@ -53,8 +53,8 @@ class BasetenReasoningAdapter:
         rid = parsed.get("rule_version_id")
         for rv in rule_versions:
             if rv["id"] == rid:
-                return {"rule_version": rv, "score": float(parsed.get("confidence", 0)),
-                        "score_kind": "calibrated_estimate", "match_type": "semantic"}
+                return {"rule_version": rv, "score": None,
+                        "score_kind": "none", "match_type": "semantic"}
         return None
 
 
@@ -112,7 +112,7 @@ class ModalReasoningAdapter:
                       for rv in rule_versions]
         out = self.generate(
             f"Question: {question_text}\nCandidates: {json.dumps(candidates)}\n"
-            'Reply {"rule_version_id": "<id or null>", "confidence": 0..1}')
+            'Reply {"rule_version_id": "<id or null>"}. Do not include confidence.')
         if not out:
             return None
         try:
@@ -121,8 +121,8 @@ class ModalReasoningAdapter:
             return None
         for rv in rule_versions:
             if rv["id"] == parsed.get("rule_version_id"):
-                return {"rule_version": rv, "score": float(parsed.get("confidence", 0)),
-                        "score_kind": "calibrated_estimate", "match_type": "semantic"}
+                return {"rule_version": rv, "score": None,
+                        "score_kind": "none", "match_type": "semantic"}
         return None
 
 
@@ -160,7 +160,7 @@ class MetaReasoningAdapter:
                       for rv in rule_versions]
         out = self.generate(
             f"Question: {question_text}\nCandidates: {json.dumps(candidates)}\n"
-            'Reply {"rule_version_id": "<id or null>", "confidence": 0..1}')
+            'Reply {"rule_version_id": "<id or null>"}. Do not include confidence.')
         if not out:
             return None
         try:
@@ -169,8 +169,8 @@ class MetaReasoningAdapter:
             return None
         for rv in rule_versions:
             if rv["id"] == parsed.get("rule_version_id"):
-                return {"rule_version": rv, "score": float(parsed.get("confidence", 0)),
-                        "score_kind": "calibrated_estimate", "match_type": "semantic"}
+                return {"rule_version": rv, "score": None,
+                        "score_kind": "none", "match_type": "semantic"}
         return None
 
 

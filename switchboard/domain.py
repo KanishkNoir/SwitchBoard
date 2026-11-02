@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 LOCKED_RISK = "locked"
 REVERSIBILITY = ("reversible", "partially_reversible", "irreversible", "unknown")
 INTENT_TYPES = ("preference", "permission", "disambiguation", "action_review", "unknown")
+RISK_HINTS = ("standard", "locked")
 
 
 def normalize_text(s: str) -> str:
@@ -45,10 +46,13 @@ class QuestionRequest:
             "request_id": self.request_id,
             "question": normalize_text(self.question),
             "category": self.category,
+            "risk_hint": self.risk_hint,
             "reversibility": self.reversibility if self.reversibility in REVERSIBILITY else "unknown",
             "deadline_at": self.deadline_at,
             "options": sorted(
-                [{"id": str(o.get("id", "")), "label": normalize_text(str(o.get("label", "")))} for o in self.options],
+                [{"id": str(o.get("id", "")),
+                  "label": normalize_text(str(o.get("label", ""))),
+                  "value": o.get("value")} for o in self.options],
                 key=lambda o: o["id"]),
             "context": self.context or {},
             "intent_type": self.intent_type if self.intent_type in INTENT_TYPES else "unknown",
@@ -83,6 +87,8 @@ def classify_risk(q: QuestionRequest, settings) -> dict:
     """Conservative: agent risk_hint can raise, never lower, our classification."""
     reasons = []
     ctx = q.context or {}
+    if q.risk_hint == "locked":
+        reasons.append("agent_risk_hint:locked")
     if q.category in settings.locked_categories:
         reasons.append(f"category_locked:{q.category}")
     for flag in settings.locked_context_flags:
