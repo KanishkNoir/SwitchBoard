@@ -1,5 +1,6 @@
 """MCP ingress (LLD 6.1-6.4). Agent identity comes from SWITCHBOARD_AGENT_KEY, never payload JSON."""
 import os
+from typing import Literal
 
 from pydantic import AnyHttpUrl
 from mcp.server.mcpserver import MCPServer as FastMCP
@@ -105,11 +106,12 @@ def hosted_http_app():
 
 @mcp.tool()
 def ask(request_id: str, question: str, category: str, intent_type: str = "unknown",
-        reversibility: str = "unknown", context: dict | None = None, options: list | None = None) -> dict:
+        reversibility: str = "unknown", context: dict | None = None, options: list | None = None,
+        risk_hint: Literal["standard", "locked"] | None = None) -> dict:
     """Ask Switchboard whether a question is already answered by a valid user rule."""
     req = QuestionRequest(
         request_id=request_id, question=question, category=category, intent_type=intent_type,
-        reversibility=reversibility, context=context or {}, options=options or [])
+        reversibility=reversibility, context=context or {}, options=options or [], risk_hint=risk_hint)
     if hub() is not None:
         return hub().ask(req)
     return svc().ask(_agent(), req)

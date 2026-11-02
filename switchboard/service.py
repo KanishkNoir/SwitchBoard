@@ -5,7 +5,8 @@ from datetime import datetime, timezone
 from functools import wraps
 
 from .config import settings as default_settings
-from .domain import QuestionRequest, canonical_json, classify_risk, evaluate_scope, normalize_text, sha256_hex, tokens
+from .domain import (RISK_HINTS, QuestionRequest, canonical_json, classify_risk, evaluate_scope,
+                     normalize_text, sha256_hex, tokens)
 from .matching import MatcherLadder
 from .persistence import Store, new_id, now_iso
 
@@ -277,6 +278,8 @@ class SwitchboardService:
             raise SwitchboardError("INVALID_SCHEMA", "request_id, question, category required")
         if len(req.question) > 4000:
             raise SwitchboardError("INVALID_SCHEMA", "question too long")
+        if req.risk_hint is not None and req.risk_hint not in RISK_HINTS:
+            raise SwitchboardError("INVALID_SCHEMA", f"risk_hint must be one of {', '.join(RISK_HINTS)}")
         self._validate_parent_receipts(agent, req)
         chash = req.canonical_hash()
         prior = self._prior_request(agent["id"], req.request_id, chash)
@@ -321,12 +324,13 @@ class SwitchboardService:
             qid = new_id()
             self.store.execute(
                 "INSERT INTO questions(id,request_id,agent_id,canonical_hash,question_text,category,intent_type,"
-                "risk_class,reversibility,deadline_at,options_json,context_json,status,created_at,parent_receipts_json)"
-                " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "risk_class,reversibility,deadline_at,options_json,context_json,status,created_at,parent_receipts_json,"
+                "risk_hint) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (qid, req.request_id, agent["id"], chash, normalize_text(req.question), req.category,
                  req.intent_type, risk["risk_class"], req.reversibility, req.deadline_at,
                  json.dumps(req.options), json.dumps(req.context), "received", now_iso(),
-                 json.dumps(sorted({receipt_id.strip() for receipt_id in (req.parent_receipts or [])}))))
+                 json.dumps(sorted({receipt_id.strip() for receipt_id in (req.parent_receipts or [])})),
+                 req.risk_hint))
             self.store.emit("agent", agent["id"], "question.received", "question", qid,
                             {"category": req.category}, correlation_id=req.request_id)
             # Queue first, decide second: locked questions still reach the
@@ -350,26 +354,30 @@ class SwitchboardService:
             if stage == "shadow":
                 return self._persist_decision(qid, req, cat, "shadow", "shadow",
                                               candidate["tier"] if candidate else "none",
-                                              candidate, True, scope_result)
+                                              candidate, True, scope_result, effective_stage=stage)
             if stage == "suggest":
                 return self._persist_decision(qid, req, cat, "suggested", "suggest",
                                               candidate["tier"] if candidate else "none",
-                                              candidate, True, scope_result)
+                                              candidate, True, scope_result, effective_stage=stage)
             if stage in ("warn", "auto") and candidate and getattr(self.cfg, "risk_gate_mode", "shadow") == "enforce":
                 gate = self.risk_estimate(req.category)
                 if gate["gate_state"] != "within_target":
                     reason = ("risk_gate_insufficient_evidence" if gate["gate_state"] == "insufficient_evidence"
                               else "risk_gate_exceeded")
                     return self._persist_decision(qid, req, cat, "deferred", reason,
-                                                  candidate["tier"], candidate, True, scope_result)
+                                                  candidate["tier"], candidate, True, scope_result,
+                                                  effective_stage=stage)
             if stage == "warn" and candidate:
                 return self._persist_decision(qid, req, cat, "warn", "warn_stage",
-                                              candidate["tier"], candidate, False, scope_result)
+                                              candidate["tier"], candidate, False, scope_result,
+                                              effective_stage=stage)
             if stage == "auto" and candidate:
                 return self._persist_decision(qid, req, cat, "auto", "matched_rule",
-                                              candidate["tier"], candidate, False, scope_result)
+                                              candidate["tier"], candidate, False, scope_result,
+                                              effective_stage=stage)
             return self._persist_decision(qid, req, cat, "deferred", match_reason,
-                                          match_tier, candidate, True, scope_result)
+                                      match_tier, candidate, True, scope_result,
+                                      effective_stage=stage)
 
     def _prior_request(self, agent_id, request_id, canonical_hash):
         prior_q = self.store.query_one(
@@ -436,7 +444,8 @@ class SwitchboardService:
             "answer": json.loads(answered["answer_json"] or "{}"),
         }
 
-    def _persist_decision(self, qid, req, cat, mode, reason, tier, candidate, human, scope_result=None):
+    def _persist_decision(self, qid, req, cat, mode, reason, tier, candidate, human,
+                          scope_result=None, effective_stage=None):
         # Atomicity guard: re-check the candidate version is still active at persistence time.
         if candidate:
             active = self.store.query_one("SELECT active_version_id FROM rules WHERE id=?",
@@ -445,12 +454,41 @@ class SwitchboardService:
                 mode, reason, candidate = "deferred", "stale_rule_version", None
         did = new_id()
         answer = candidate["rule_version"]["_answer"] if (candidate and mode in ("auto", "warn")) else None
+        # Keep enough structured, privacy-minimized context to evaluate future
+        # policy changes. Never copy prompts or raw request context into traces.
+        risk = classify_risk(req, self.cfg)
+        policy_trace = {
+            "trace_schema": 1,
+            "global_policy_version": self.cfg.policy_version,
+            "category_policy_version": cat["policy_version"],
+            "category": req.category,
+            "category_stage": cat["stage"],
+            "effective_stage": effective_stage or cat["stage"],
+            "stage_overridden": bool(effective_stage and effective_stage != cat["stage"]),
+            "category_locked": bool(cat["locked"]),
+            "risk_target": cat["risk_target"],
+            "risk_class": risk["risk_class"],
+            "risk_reasons": risk["reasons"],
+            "risk_hint": req.risk_hint,
+            "intent_type": req.intent_type,
+            "reversibility": req.reversibility,
+            "has_deadline": bool(req.deadline_at),
+            "option_count": len(req.options or []),
+            "context_fingerprint": sha256_hex(canonical_json(req.context or {})),
+            "matcher_tier": tier,
+            "score_kind": candidate.get("score_kind") if candidate else None,
+            "candidate_rule_version_id": candidate["rule_version"]["id"] if candidate else None,
+            "scope_result": (scope_result or {}).get("result") if scope_result else None,
+            "decision_mode": mode,
+            "reason_code": reason,
+            "human_required": bool(human),
+        }
         self.store.execute(
             "INSERT INTO decisions(id,question_id,mode,answer_json,reason_code,matcher_tier,score,score_kind,"
-            "category_stage,policy_version,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            "category_stage,policy_version,created_at,policy_trace_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
             (did, qid, mode, json.dumps(answer) if answer else None, reason, tier,
              candidate["score"] if candidate else None, candidate["score_kind"] if candidate else None,
-             cat["stage"], self.cfg.policy_version, now_iso()))
+             cat["stage"], self.cfg.policy_version, now_iso(), canonical_json(policy_trace)))
         if candidate:
             self.store.execute(
                 "INSERT OR IGNORE INTO decision_rule_uses(decision_id,rule_version_id,match_type,scope_result_json)"

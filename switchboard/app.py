@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import re
+from typing import Literal
 
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
@@ -255,7 +256,7 @@ class AskIn(BaseModel):
     request_id: str
     question: str
     category: str
-    risk_hint: str | None = None
+    risk_hint: Literal["standard", "locked"] | None = None
     reversibility: str = "unknown"
     deadline_at: str | None = None
     options: list = []

@@ -23,6 +23,7 @@ class HubClient:
             return self._post("/api/ask", {
                 "request_id": req.request_id, "question": req.question,
                 "category": req.category, "intent_type": req.intent_type,
+                "risk_hint": req.risk_hint,
                 "reversibility": req.reversibility, "context": req.context or {},
                 "options": req.options or [], "action": req.action,
                 "parent_receipts": req.parent_receipts or []})

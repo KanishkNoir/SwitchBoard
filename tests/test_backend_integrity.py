@@ -1,11 +1,14 @@
 """Regression coverage for backend identity, matching, and transaction invariants."""
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
+import json
+from types import SimpleNamespace
 
 import pytest
 
 from switchboard.config import Settings
 from switchboard.domain import QuestionRequest
+from switchboard.adapters import BasetenReasoningAdapter, MetaReasoningAdapter, ModalReasoningAdapter
 from switchboard.persistence import Store
 from switchboard.service import SwitchboardError, SwitchboardService
 
@@ -70,6 +73,71 @@ def test_feedback_and_dependency_scopes_are_enforced():
     with pytest.raises(SwitchboardError) as dependency_error:
         service.record_use(agent, answer["receipt_id"], "task", "task-1", "used_answer")
     assert dependency_error.value.code == "FORBIDDEN_SCOPE"
+
+
+def test_idempotency_hash_covers_risk_hint_and_option_values():
+    common = {"request_id": "semantic-hash", "question": "Choose a target", "category": "deploy",
+              "options": [{"id": "a", "label": "Staging", "value": {"target": "staging"}}]}
+    base = QuestionRequest(**common)
+    changed_value = QuestionRequest(
+        **{**common, "options": [{"id": "a", "label": "Staging", "value": {"target": "production"}}]})
+    changed_hint = QuestionRequest(**common, risk_hint="locked")
+
+    assert base.canonical_hash() != changed_value.canonical_hash()
+    assert base.canonical_hash() != changed_hint.canonical_hash()
+
+
+def test_agent_risk_hint_can_escalate_but_cannot_lower_policy_risk():
+    service, agent = _make()
+    _seed_rule(service)
+    result = _ask(service, agent, "risk-hint-escalation", risk_hint="locked")
+
+    assert result["decision"] == "defer"
+    assert result["reason_code"] == "locked"
+    question = service.store.query_one(
+        "SELECT risk_class,risk_hint FROM questions WHERE id=?", (result["question_id"],))
+    assert question == {"risk_class": "locked", "risk_hint": "locked"}
+
+    with pytest.raises(SwitchboardError) as error:
+        _ask(service, agent, "invalid-risk-hint", risk_hint="low")
+    assert error.value.code == "INVALID_SCHEMA"
+
+
+def test_decision_trace_captures_policy_inputs_without_raw_context():
+    service, agent = _make()
+    result = _ask(service, agent, "trace-context", risk_hint="locked",
+                  context={"environment": "private-customer-detail"})
+
+    stored = service.store.query_one(
+        "SELECT policy_trace_json FROM decisions WHERE id=?", (result["decision_id"],))
+    trace = json.loads(stored["policy_trace_json"])
+
+    assert trace["trace_schema"] == 1
+    assert trace["risk_class"] == "locked"
+    assert trace["risk_hint"] == "locked"
+    assert trace["decision_mode"] == "deferred"
+    assert len(trace["context_fingerprint"]) == 64
+    assert "private-customer-detail" not in stored["policy_trace_json"]
+
+
+@pytest.mark.parametrize("adapter_type,cfg", [
+    (BasetenReasoningAdapter, SimpleNamespace(enable_t3=True, baseten_api_key="test-key")),
+    (ModalReasoningAdapter, SimpleNamespace(enable_t3=True, modal_chat_url="https://model.test",
+                                             modal_proxy_token_id="id", modal_proxy_token_secret="secret")),
+    (MetaReasoningAdapter, SimpleNamespace(enable_t3=True, meta_api_key="test-key")),
+])
+def test_hosted_model_self_reported_confidence_is_not_labeled_calibrated(adapter_type, cfg):
+    adapter = adapter_type(cfg)
+    adapter.generate = lambda *_args, **_kwargs: {
+        "text": json.dumps({"rule_version_id": "rule-v1", "confidence": 0.999}),
+        "model": "mock-model", "usage": {"total_tokens": 4}}
+    rule = {"id": "rule-v1", "_predicate": {"example_question": "Which target?"}}
+
+    result = adapter.match("Select a target", "deploy", [rule])
+
+    assert result["rule_version"] is rule
+    assert result["score"] is None
+    assert result["score_kind"] == "none"
 
 
 def test_outcome_and_dependency_payloads_fail_closed_on_invalid_values():
