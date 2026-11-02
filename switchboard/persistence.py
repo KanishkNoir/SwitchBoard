@@ -4,6 +4,7 @@ import sqlite3
 import threading
 import time
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
 
 # Per-request SQLite accounting, read by the Server-Timing middleware.
@@ -52,7 +53,8 @@ CREATE TABLE IF NOT EXISTS questions(
   canonical_hash TEXT NOT NULL, question_text TEXT NOT NULL, category TEXT NOT NULL,
   intent_type TEXT NOT NULL, risk_class TEXT NOT NULL, reversibility TEXT NOT NULL,
   deadline_at TEXT, options_json TEXT, context_json TEXT, status TEXT NOT NULL,
-  created_at TEXT NOT NULL, UNIQUE(agent_id, request_id));
+  created_at TEXT NOT NULL, parent_receipts_json TEXT NOT NULL DEFAULT '[]',
+  UNIQUE(agent_id, request_id));
 CREATE TABLE IF NOT EXISTS rules(
   id TEXT PRIMARY KEY, category TEXT NOT NULL, created_at TEXT NOT NULL,
   created_by TEXT NOT NULL, active_version_id TEXT, status TEXT NOT NULL DEFAULT 'active');
@@ -160,6 +162,8 @@ class Store:
         # access to this shared SQLite connection while keeping long-lived
         # async streams outside the database lock.
         self._lock = threading.RLock()
+        self._transaction_depth = 0
+        self._transaction_dirty = False
         self.conn.row_factory = sqlite3.Row
         # Every mutating execute bumps the generation: read caches key on it,
         # so a write can never be followed by a stale read from this store.
@@ -176,6 +180,10 @@ class Store:
         cols = {r[1] for r in self.conn.execute("PRAGMA table_info(steering_sessions)")}
         if cols and "project" not in cols:
             self.conn.execute("ALTER TABLE steering_sessions ADD COLUMN project TEXT")
+        question_cols = {r[1] for r in self.conn.execute("PRAGMA table_info(questions)")}
+        if question_cols and "parent_receipts_json" not in question_cols:
+            self.conn.execute(
+                "ALTER TABLE questions ADD COLUMN parent_receipts_json TEXT NOT NULL DEFAULT '[]'")
         self.conn.commit()
         # Bound the WAL: SQLite auto-checkpoints past this size instead of
         # accumulating an unrecoverable multi-megabyte backlog on the volume.
@@ -184,29 +192,73 @@ class Store:
     def close(self):
         self.conn.close()
 
-    def _timed(self, sql, params, mutating: bool):
+    @contextmanager
+    def transaction(self, immediate: bool = True):
+        """Run a group of store operations as one atomic SQLite transaction.
+
+        The re-entrant lock is held for the full unit of work so threads never
+        interleave statements on this shared connection. Nested units use
+        savepoints; only the outer commit advances the read-cache generation.
+        """
+        with self._lock:
+            depth = self._transaction_depth
+            savepoint = f"switchboard_sp_{depth}"
+            dirty_before = self._transaction_dirty
+            if depth == 0:
+                self.conn.execute("BEGIN IMMEDIATE" if immediate else "BEGIN")
+                self._transaction_dirty = False
+            else:
+                self.conn.execute(f"SAVEPOINT {savepoint}")
+            self._transaction_depth += 1
+            try:
+                yield self
+            except BaseException:
+                self._transaction_depth -= 1
+                self._transaction_dirty = dirty_before
+                if depth == 0:
+                    self.conn.rollback()
+                else:
+                    self.conn.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+                    self.conn.execute(f"RELEASE SAVEPOINT {savepoint}")
+                raise
+            else:
+                self._transaction_depth -= 1
+                if depth == 0:
+                    dirty = self._transaction_dirty
+                    try:
+                        self.conn.commit()
+                    except BaseException:
+                        self.conn.rollback()
+                        self._transaction_dirty = False
+                        raise
+                    self._transaction_dirty = False
+                    if dirty:
+                        self.write_seq += 1
+                else:
+                    self.conn.execute(f"RELEASE SAVEPOINT {savepoint}")
+
+    def _timed(self, sql, params, mutating: bool, count: bool = True):
         t0 = time.perf_counter()
         try:
             with self._lock:
                 cur = self.conn.execute(sql, params)
                 if mutating:
-                    self.conn.commit()
-                    self.write_seq += 1
+                    if self._transaction_depth:
+                        if count:
+                            self._transaction_dirty = True
+                    else:
+                        self.conn.commit()
+                        if count:
+                            self.write_seq += 1
             return cur
         finally:
             with self._lock:
                 _record(self, (time.perf_counter() - t0) * 1000.0)
 
     def execute(self, sql, params=(), count=True):
-        # count=False is reserved for append-only audit writes (e.g. the
-        # passport history table) that no read endpoint depends on: they must
-        # not invalidate the read cache they are computed alongside.
-        with self._lock:
-            if not count:
-                cur = self._timed(sql, params, mutating=True)
-                self.write_seq -= 1
-                return cur
-            return self._timed(sql, params, mutating=True)
+        # count=False is reserved for append-only history writes that no read
+        # endpoint depends on. They still participate in transaction rollback.
+        return self._timed(sql, params, mutating=True, count=count)
 
     def query(self, sql, params=()):
         with self._lock:

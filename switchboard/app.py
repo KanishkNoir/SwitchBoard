@@ -277,6 +277,7 @@ API_CAPABILITIES = ["inbox", "steering", "debrief", "onboarding", "taste",
 @app.get("/health")
 def health():
     return {"status": "ok", "version": "0.2.0", "t3_enabled": svc.ladder.t3 is not None,
+            "risk_gate_mode": getattr(settings, "risk_gate_mode", "shadow"),
             "capabilities": API_CAPABILITIES}
 
 
