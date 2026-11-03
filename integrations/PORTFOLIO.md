@@ -1,5 +1,11 @@
 # Switchboard integration portfolio
 
+> Current status: the [3 November 2026 connection audit](CONNECTION_AUDIT_2026-11-03.md)
+> supersedes the historical verification claims below. Several saved clients use
+> an old Modal workspace URL; Codex/Claude Code credentials are incomplete, and
+> hosted MCP/OAuth is absent from the observed deployment. Historical protocol
+> success is not evidence that a client is connected today.
+
 Switchboard is agent-agnostic: any MCP-capable agent can call `ask`, `get_rules`,
 `report_outcome`, and `record_use`. This portfolio ranks real-world agents by
 **integration speed** — time from "user has the agent" to "agent asks Switchboard

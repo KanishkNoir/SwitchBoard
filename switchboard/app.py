@@ -213,25 +213,27 @@ async def server_timing(request: Request, call_next):
     return resp
 
 
-# Phase 2 read cache (Snowflake-style persisted results): hot reads are keyed
-# on (endpoint, params, write_seq) and served without touching SQLite while
-# nothing has changed. Any write bumps write_seq inside the same commit, so a
-# cached read can never follow a write it doesn't include.
+# Cache application reads while both local writes and SQLite's external-commit
+# counter are unchanged. stdio MCP processes can write the same ledger too.
 _read_cache: dict = {}
 
 
 def cached_read(key: str, params: str, compute):
-    gen = store.write_seq
-    ckey = (key, params, gen)
-    if ckey in _read_cache:
-        body, etag = _read_cache[ckey]
-        return body, etag, True
-    body = compute()
-    etag = f'"{abs(hash(json.dumps(body, sort_keys=True, default=str))) % 10**12}"'
-    for k in [k for k in _read_cache if k[2] != gen]:
-        del _read_cache[k]  # only the current generation is ever servable
-    _read_cache[ckey] = (body, etag)
-    return body, etag, False
+    with store._lock:
+        gen = store.cache_generation()
+        ckey = (key, params, gen)
+        if ckey in _read_cache:
+            body, etag = _read_cache[ckey]
+            return body, etag, True
+        body = compute()
+        etag = f'"{abs(hash(json.dumps(body, sort_keys=True, default=str))) % 10**12}"'
+        for k in [k for k in _read_cache if k[2] != gen]:
+            del _read_cache[k]
+        # A commit during computation must not associate its generation with
+        # a result that may predate it (including category creation on reads).
+        if store.cache_generation() == gen:
+            _read_cache[ckey] = (body, etag)
+        return body, etag, False
 
 
 def cached_response(request: Request, key: str, params: str, compute):
@@ -1029,14 +1031,21 @@ async def stream(request: Request):
 
     async def gen():
         try:
+            generation = await asyncio.to_thread(store.cache_generation)
             while True:
                 if await request.is_disconnected():
                     break
                 try:
                     event = await asyncio.wait_for(queue.get(), timeout=15)
+                    generation = await asyncio.to_thread(store.cache_generation)
                     yield f"data: {json.dumps({'event': event})}\n\n"
                 except asyncio.TimeoutError:
-                    yield ": keep-alive\n\n"
+                    current = await asyncio.to_thread(store.cache_generation)
+                    if current != generation:
+                        generation = current
+                        yield f"data: {json.dumps({'event': 'ledger'})}\n\n"
+                    else:
+                        yield ": keep-alive\n\n"
         finally:
             _subscribers.remove(queue)
 

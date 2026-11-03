@@ -291,7 +291,10 @@ def _run_s3(naive: bool) -> dict:
                 svc.report_outcome(agent, resp["decision_id"], "success", f"agent flood {k}")
             if naive:
                 contamination += 3
-                svc._record_fresh_evidence("deploy", {"env": "staging", "flood": i}, "agent_asserted_naive")
+                # Deliberately unsafe baseline: simulate admitting the flood
+                # and releasing its hold. Production evidence admission is
+                # decision/version-bound and never consumes agent labels.
+                svc.clear_holds("deploy", actor="synthetic_naive_baseline")
             else:
                 svc.answer_inbox(
                     next(x for x in svc.inbox() if x["question_id"] == resp["question_id"])["id"],

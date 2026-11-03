@@ -208,7 +208,7 @@ xychart-beta
     bar [8, 0, 0]
 ```
 
-In these traces, B2 asks more often after a correction. That reduces coverage while the changed preference is checked again. In a scenario where the first correction is wrong, probation produced 2 wrong automatic answers, compared with 3 for B1. When a correction has the wrong scope, both approaches can fail because the system was not given the right boundary.
+In these traces, B2 asks more often after a correction. Only confirmations of the held rule version count; unrelated answers and answers that disagree with that version do not release its hold. In the current scenario where the first correction is wrong, probation produces 0 wrong automatic answers, compared with 3 for B1, at 43% versus 100% automatic coverage. When a correction has the wrong scope, both approaches can fail because the system was not given the right boundary.
 
 A separate adversarial trace sends false success reports from agents. A strategy that trusts agent reports becomes contaminated. Switchboard does not count those reports as user-confirmed evidence.
 
@@ -220,7 +220,7 @@ These results come from synthetic traces, not real users. The sample is small, a
 uv run pytest -q
 ```
 
-The suite includes a subprocess integration test for MCP over HTTP.
+The suite includes backend policy, evidence, migration, cache, authentication, and integration regressions. Enable the subprocess MCP-over-HTTP test with `SWITCHBOARD_IT=1`; it is skipped by default.
 
 ## Optional model providers
 
