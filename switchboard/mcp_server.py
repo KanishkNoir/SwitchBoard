@@ -8,6 +8,7 @@ from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions, RevocationOptions
 
 from .config import settings
+from .credentials import agent_key
 from .domain import QuestionRequest
 from .persistence import Store
 from .service import SwitchboardService
@@ -18,16 +19,26 @@ _hub = None
 _force_local_backend = False
 _oauth_provider = None
 _public_url = os.environ.get("SWITCHBOARD_MCP_PUBLIC_URL", "").rstrip("/")
+INSTRUCTIONS = (
+    "Switchboard is this user's shared decision service. Before asking a preference, permission, "
+    "or scope question that a standing rule could answer, call ask with a stable request_id and "
+    "accurate context. Reuse an answer only within its returned scope and cite its receipt. "
+    "A defer means the question is queued: do not guess, bypass the queue, or execute the action. "
+    "Continue independent work. Record downstream receipt use with record_use. Report outcomes "
+    "as agent assertions, never as human confirmation. Proposal steering requests a revision; "
+    "it never authorizes an action. Use get_connection_status to verify identity and connectivity."
+)
 
 
 def _make_mcp():
     global _oauth_provider
     if not _public_url:
-        return FastMCP("switchboard")
+        return FastMCP("switchboard", instructions=INSTRUCTIONS)
     _oauth_provider = SwitchboardOAuthProvider(
         svc().store, _public_url, lambda key: svc().authenticate(key))
     return FastMCP(
         "switchboard",
+        instructions=INSTRUCTIONS,
         auth_server_provider=_oauth_provider,
         auth=AuthSettings(
             issuer_url=AnyHttpUrl(_public_url),
@@ -75,7 +86,7 @@ def hub():
         return None
     if _hub is None and settings.remote_url:
         from .remote import HubClient
-        _hub = HubClient(settings.remote_url, os.environ.get("SWITCHBOARD_AGENT_KEY", ""))
+        _hub = HubClient(settings.remote_url, agent_key())
     return _hub
 
 
@@ -83,7 +94,7 @@ def _agent():
     token = get_access_token()
     if token is not None and token.subject:
         return svc().authenticate_agent_id(token.subject)
-    return svc().authenticate(os.environ.get("SWITCHBOARD_AGENT_KEY", ""))
+    return svc().authenticate(agent_key())
 
 
 if _oauth_provider is not None:
@@ -150,6 +161,21 @@ def revise_proposal(session_id: str, proposal_text: str, note: str = "") -> dict
     if hub() is not None:
         return hub().revise_proposal(session_id, proposal_text, note or None)
     return svc().revise_proposal(_agent(), session_id, proposal_text, note or None)
+
+
+@mcp.tool()
+def get_connection_status() -> dict:
+    """Verify the actual backend and authenticated agent, rather than tool discovery alone."""
+    if hub() is not None:
+        return hub().connection_status()
+    try:
+        agent = _agent()
+        import json
+        return {"connected": True, "backend": "local", "agent": {
+            "id": agent["id"], "name": agent["name"], "kind": agent["kind"],
+            "scopes": json.loads(agent["scopes_json"])}}
+    except Exception:
+        return {"connected": False, "backend": "local", "reason_code": "UNAUTHENTICATED"}
 
 
 @mcp.tool()

@@ -8,7 +8,7 @@ the tool runs and reports the completed tool call afterward.
 
 ## Enable it
 
-1. Ensure `SWITCHBOARD_AGENT_KEY` and `SWITCHBOARD_REMOTE_URL` are available to
+1. Ensure `SWITCHBOARD_AGENT_KEY` (or `SWITCHBOARD_AGENT_KEY_FILE`) and `SWITCHBOARD_REMOTE_URL` are available to
 OpenCode's process. For this workspace the plugin can also read the Switchboard
 server values from `opencode.json`; it never prints the key.
 2. Restart OpenCode so it loads `.opencode/plugins/switchboard-gate.js`.

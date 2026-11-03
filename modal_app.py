@@ -7,7 +7,11 @@ Setup once (workspace token required — proxy tokens cannot deploy):
       MODAL_PROXY_TOKEN_ID=... MODAL_PROXY_TOKEN_SECRET=... SWITCHBOARD_UI_TOKEN=...
 
 Deploy:
-  modal deploy modal_app.py
+  modal deploy --strategy recreate modal_app.py
+
+Use recreate for this single-writer SQLite deployment: overlapping rolling
+workers can overwrite each other's volume snapshot, and persistent streams
+can delay a rolling replacement. Back up the volume before deploying.
 """
 import os
 
@@ -33,7 +37,8 @@ secrets = [modal.Secret.from_name("switchboard-secrets")]
 # sync on commit/stop, not per-write), which made sessions flicker in and out
 # as requests landed on different containers. One container = one ledger.
 @app.function(image=image, volumes={"/data": volume}, secrets=secrets,
-              env={"SWITCHBOARD_MCP_PUBLIC_URL": os.environ.get("SWITCHBOARD_MCP_PUBLIC_URL")},
+              env={key: value for key in ("SWITCHBOARD_MCP_PUBLIC_URL", "SWITCHBOARD_BUILD_ID")
+                   if (value := os.environ.get(key))},
               cpu=1.0, memory=1024, scaledown_window=300,
               min_containers=1, max_containers=1)
 @modal.concurrent(max_inputs=64, target_inputs=16)
@@ -55,42 +60,11 @@ def web():
 
     from switchboard.app import svc as web_service
     from switchboard import mcp_server
-    from contextlib import asynccontextmanager
     mcp_server.bind_service(web_service)
     mcp_server.use_local_backend()
     mcp_app = mcp_server.hosted_http_app()
 
-    # The MCP app is dispatched as a sub-application below. Starlette does not
-    # run mounted apps' lifespans, so enter its session manager from the host
-    # FastAPI lifespan or POST /mcp fails with "Task group is not initialized".
-    web_lifespan = fastapi_app.router.lifespan_context
-
-    @asynccontextmanager
-    async def combined_lifespan(application):
-        async with web_lifespan(application):
-            async with mcp_server.mcp.session_manager.run():
-                yield
-
-    fastapi_app.router.lifespan_context = combined_lifespan
-
-    class CombinedASGI:
-        """Serve web/API and MCP in one worker so SQLite has one shared owner."""
-
-        def __init__(self, web_app, remote_mcp_app):
-            self.web_app = web_app
-            self.remote_mcp_app = remote_mcp_app
-
-        async def __call__(self, scope, receive, send):
-            if scope["type"] == "http":
-                path = scope.get("path", "")
-                is_mcp = (
-                    path == "/mcp"
-                    or path.startswith("/.well-known/")
-                    or path in {"/authorize", "/token", "/register", "/revoke", "/oauth/consent"}
-                )
-                if is_mcp:
-                    return await self.remote_mcp_app(scope, receive, send)
-            return await self.web_app(scope, receive, send)
-
-    return CombinedASGI(fastapi_app, mcp_app)
+    # Mounted apps do not receive Starlette lifespan events automatically.
+    from switchboard.hosting import combined_app
+    return combined_app(fastapi_app, mcp_app, mcp_server.mcp.session_manager)
 

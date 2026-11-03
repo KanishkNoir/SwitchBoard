@@ -274,12 +274,13 @@ class AskIn(BaseModel):
 API_CAPABILITIES = ["inbox", "steering", "debrief", "onboarding", "taste",
                     "simulation", "passport", "notices", "resolve", "action_gate",
                     "steering_suggestions", "steering_summary",
-                    "steering_written_requests", "simulation_semantic_steering"]
+                    "steering_written_requests", "simulation_semantic_steering", "connection_status"]
 
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "version": "0.2.0", "t3_enabled": svc.ladder.t3 is not None,
+    return {"status": "ok", "version": "0.2.0", "build_id": os.environ.get("SWITCHBOARD_BUILD_ID", "development"),
+            "t3_enabled": svc.ladder.t3 is not None,
             "risk_gate_mode": getattr(settings, "risk_gate_mode", "shadow"),
             "capabilities": API_CAPABILITIES}
 
@@ -331,6 +332,13 @@ def rules(x_agent_key: str | None = Header(default=None), category: str | None =
         return svc.get_rules(agent, category)
     except SwitchboardError as e:
         return err(e)
+
+
+@app.get("/api/identity")
+def agent_identity(x_agent_key: str | None = Header(default=None)):
+    agent = agent_from(x_agent_key)
+    return {"id": agent["id"], "name": agent["name"], "kind": agent["kind"],
+            "scopes": json.loads(agent["scopes_json"])}
 
 
 @app.post("/api/report_outcome")

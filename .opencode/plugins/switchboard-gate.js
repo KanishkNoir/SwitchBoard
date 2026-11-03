@@ -24,7 +24,11 @@ async function loadCredentials(directory) {
       // An absent or non-JSONC project config is fine; environment variables can supply credentials.
     }
   }
-  const key = process.env.SWITCHBOARD_AGENT_KEY || configured.SWITCHBOARD_AGENT_KEY || ""
+  let key = process.env.SWITCHBOARD_AGENT_KEY || configured.SWITCHBOARD_AGENT_KEY || ""
+  if (!key || key.startsWith("${")) {
+    const keyFile = process.env.SWITCHBOARD_AGENT_KEY_FILE || configured.SWITCHBOARD_AGENT_KEY_FILE
+    key = keyFile ? (await readFile(keyFile, "utf8")).trim() : ""
+  }
   const baseUrl = (process.env.SWITCHBOARD_REMOTE_URL || configured.SWITCHBOARD_REMOTE_URL || "").replace(/\/+$/, "")
   if (baseUrl) {
     const parsed = new URL(baseUrl)
@@ -110,7 +114,14 @@ async function waitForHumanAnswer(credentials, questionId) {
 }
 
 export const SwitchboardGate = async ({ directory }) => {
-  const credentials = await loadCredentials(directory)
+  // Keep the hook registered even when configuration is broken. Throwing
+  // during plugin initialization can leave OpenCode without a gate at all.
+  let credentials
+  try {
+    credentials = await loadCredentials(directory)
+  } catch {
+    credentials = { key: "", baseUrl: "" }
+  }
   const approvedCalls = new Map()
 
   return {

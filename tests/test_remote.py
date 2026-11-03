@@ -1,12 +1,13 @@
 import json
 
 import httpx
+import pytest
 from fastapi.testclient import TestClient
 
 import switchboard.app as app_module
 from switchboard.domain import QuestionRequest
 from switchboard.onboard import AGENTS, render
-from switchboard.remote import HubClient
+from switchboard.remote import HubClient, HubUnavailableError
 
 
 def _client(handler):
@@ -35,7 +36,8 @@ def test_hub_unreachable_fails_closed_to_defer():
     hub = _client(handler)
     out = hub.ask(QuestionRequest(request_id="r1", question="ok?", category="git"))
     assert out["decision"] == "defer" and out["reason_code"] == "hub_unreachable"
-    assert hub.get_rules() == []
+    with pytest.raises(HubUnavailableError):
+        hub.get_rules()
     assert hub.report_outcome("d1", "done")["recorded"] is False
     assert hub.record_use("rc1", "task", "t1")["recorded"] is False
 

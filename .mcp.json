@@ -2,10 +2,18 @@
   "mcpServers": {
     "switchboard": {
       "command": "uv",
-      "args": ["run", "python", "-m", "switchboard.mcp_server"],
+      "args": [
+        "run",
+        "--project",
+        ".",
+        "python",
+        "-m",
+        "switchboard.mcp_server"
+      ],
       "env": {
-        "SWITCHBOARD_AGENT_KEY": "${SWITCHBOARD_AGENT_KEY}",
-        "SWITCHBOARD_DB": "switchboard.db"
+        "SWITCHBOARD_AGENT_KEY_FILE": ".tmp/agent-keys/claude-code.key",
+        "SWITCHBOARD_DB": "switchboard.db",
+        "SWITCHBOARD_REMOTE_URL": "https://cogni-noir--switchboard-web.us-east.modal.run"
       }
     }
   }

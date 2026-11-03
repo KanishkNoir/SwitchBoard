@@ -46,3 +46,32 @@ def test_codex_toml_shape():
     _, content = render("codex", "sb_x", "stdio")
     assert "[mcp_servers.switchboard]" in content
     assert "SWITCHBOARD_AGENT_KEY" in content
+
+
+def test_all_harnesses_can_reference_a_private_key_file(tmp_path, monkeypatch):
+    import tomllib
+    project = tmp_path / "project with spaces, and punctuation"
+    monkeypatch.setenv("SWITCHBOARD_HOME", str(project))
+    key_file = tmp_path / "private agent.key"
+    key_file.write_text("sb_private_contents_must_not_be_read")
+    for name in AGENTS:
+        _, content = render(name, api_key_file=str(key_file), remote="https://hub.example")
+        assert "sb_private_contents" not in content
+        parsed = tomllib.loads(content) if name == "codex" else json.loads(content)
+        if name in ("codex", "hermes"):
+            env = parsed["mcp_servers"]["switchboard"]["env"]
+        elif name == "opencode":
+            env = parsed["mcp"]["switchboard"]["environment"]
+        elif name == "openclaw":
+            env = parsed["mcp"]["servers"]["switchboard"]["env"]
+        else:
+            env = parsed["mcpServers"]["switchboard"]["env"]
+        assert env["SWITCHBOARD_AGENT_KEY_FILE"] == str(key_file)
+        assert "SWITCHBOARD_AGENT_KEY" not in env
+
+
+def test_hosted_http_configs_use_the_requested_hub():
+    for name in AGENTS:
+        _, content = render(name, transport="http", remote="https://hub.example/")
+        assert "https://hub.example/mcp" in content
+        assert "127.0.0.1" not in content

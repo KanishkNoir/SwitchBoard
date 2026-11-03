@@ -1,0 +1,33 @@
+{
+  "enabledMcpjsonServers": ["switchboard"],
+  "hooks": {
+    "PreToolUse": [{
+      "matcher": "*",
+      "hooks": [{
+        "type": "command",
+        "command": "powershell.exe",
+        "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/switchboard_gate.ps1"],
+        "timeout": 600,
+        "onFailure": "block"
+      }]
+    }],
+    "PostToolUse": [{
+      "matcher": "*",
+      "hooks": [{
+        "type": "command",
+        "command": "powershell.exe",
+        "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/switchboard_gate.ps1"],
+        "timeout": 20
+      }]
+    }],
+    "PostToolUseFailure": [{
+      "matcher": "*",
+      "hooks": [{
+        "type": "command",
+        "command": "powershell.exe",
+        "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/switchboard_gate.ps1"],
+        "timeout": 20
+      }]
+    }]
+  }
+}

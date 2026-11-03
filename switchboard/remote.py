@@ -7,6 +7,10 @@ Fails closed: an unreachable hub defers, never guesses.
 import httpx
 
 
+class HubUnavailableError(RuntimeError):
+    """No remote answer was obtained; never misrepresent this as no rules."""
+
+
 class HubClient:
     def __init__(self, base_url: str, api_key: str, transport=None, timeout: float = 20.0):
         self._client = httpx.Client(base_url=base_url.rstrip("/"),
@@ -45,9 +49,31 @@ class HubClient:
         try:
             resp = self._client.get("/api/rules", params={"category": category} if category else {})
             resp.raise_for_status()
-            return resp.json()
+            data = resp.json()
+            if not isinstance(data, list) or any(not isinstance(item, dict) for item in data):
+                raise ValueError("invalid rule response")
+            return data
         except Exception:
-            return []
+            raise HubUnavailableError("Switchboard hub rule lookup failed; check connection status") from None
+
+    def connection_status(self) -> dict:
+        try:
+            health = self._client.get("/health")
+            health.raise_for_status()
+            identity = self._client.get("/api/identity")
+            identity.raise_for_status()
+            state, agent = health.json(), identity.json()
+            if (state.get("status") != "ok" or not isinstance(agent.get("id"), str)
+                    or not isinstance(agent.get("name"), str) or not isinstance(agent.get("scopes"), list)):
+                return {"connected": False, "backend": "hub", "reason_code": "incompatible_hub"}
+            return {"connected": True, "backend": "hub", "agent": agent,
+                    "version": state.get("version"), "build_id": state.get("build_id"),
+                    "capabilities": state.get("capabilities", [])}
+        except httpx.HTTPStatusError as exc:
+            return {"connected": False, "backend": "hub", "reason_code": "hub_http_error",
+                    "http_status": exc.response.status_code}
+        except Exception:
+            return {"connected": False, "backend": "hub", "reason_code": "hub_unreachable"}
 
     def report_outcome(self, decision_id, outcome, detail="") -> dict:
         try:

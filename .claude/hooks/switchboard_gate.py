@@ -15,7 +15,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-DEFAULT_HUB = "https://kanishksingh-1106--switchboard-web.us-east.modal.run"
+DEFAULT_HUB = "https://cogni-noir--switchboard-web.us-east.modal.run"
 READ_ONLY_TOOLS = {
     "Read", "Glob", "Grep", "WebFetch", "WebSearch", "NotebookRead", "LS",
 }
@@ -30,7 +30,10 @@ def project_root() -> Path:
 
 
 def credentials() -> tuple[str, str]:
-    key = os.environ.get("SWITCHBOARD_AGENT_KEY", "")
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+    from switchboard.credentials import agent_key
+
+    key = agent_key()
     url = os.environ.get("SWITCHBOARD_REMOTE_URL", "")
     if not key:
         try:
@@ -42,7 +45,7 @@ def credentials() -> tuple[str, str]:
                 if "switchboard" not in name.lower():
                     continue
                 env = server.get("env") or server.get("environment") or {}
-                key = env.get("SWITCHBOARD_AGENT_KEY", key)
+                key = agent_key(env) or key
                 url = env.get("SWITCHBOARD_REMOTE_URL", url)
                 if key:
                     break

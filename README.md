@@ -1,233 +1,201 @@
 # Switchboard
 
-### A shared decision service for AI agents.
+### One person. Many agents. A shared place for decisions.
 
-AI agents often ask the same person the same questions. They may repeat a question in different words, or reuse an old answer in a new context.
+Your coding agent asks which environment to use. Your research agent asks about your budget. Your next agent asks the same questions again. Each conversation starts from scratch, while yesterday's answers quietly become today's assumptions.
 
-Switchboard gives compatible agents one place to check for current answers and ask questions they cannot safely resolve. It applies answers only within their defined scope, records how decisions were made, and sends unresolved questions to a shared inbox.
+**Switchboard is your autonomy layer across compatible AI agents.** Agents check it before interrupting you. It returns an existing answer when that answer still applies, brings unresolved questions to one inbox, and tracks what depended on each decision.
 
-## The problem
+The goal is fewer interruptions, with you in control of what agents can reuse.
 
-Without a shared decision service, each agent asks the user separately:
+Built for the **Meta × Cerebral Valley hackathon**, with Meta models through **Baseten** and deployment on **Modal**.
 
-```mermaid
-flowchart LR
-    A[Agent 1] -->|Hotel budget?| Y[User]
-    B[Agent 2] -->|Budget for the hotel?| Y
-    C[Agent 3] -->|Hotel budget?| Y
-```
+## Answer once. Keep the boundaries.
 
-With Switchboard, agents check the same decision service:
+Imagine you tell Claude Code: “Use staging for this project.”
 
-```mermaid
-flowchart LR
-    A[Agent 1] --> S[Switchboard]
-    B[Agent 2] --> S
-    C[Agent 3] --> S
-    S -->|Current answer applies| A
-    S -->|Current answer applies| B
-    S -->|Needs a decision| Y[User]
-    Y -->|Answer once| S
-```
+1. **A second agent asks.** Codex can reuse that answer when the project, environment, and category policy permit it. It gets a receipt explaining which rule applied.
+2. **The context changes.** A production request cannot inherit the staging answer just because its wording is similar. Missing required context also prevents reuse.
+3. **You change your mind.** Switchboard versions the rule, shows the decisions that used it, and flags affected pending work for revalidation. The changed rule enters a recalibration hold; unrelated rules can keep working.
+4. **An agent says “it worked.”** That report is recorded as an agent claim. It cannot stand in for your confirmation or earn the system more autonomy.
 
-The user answers once when an existing answer does not apply. Switchboard then gives the result to agents that ask the same question within the same scope.
-
-## What Switchboard does
-
-### Reuses answers within their scope
-
-An agent can ask Switchboard before it asks the user. If a current answer applies to that agent and context, Switchboard returns it with a receipt. If there is no suitable answer, the question enters a priority queue. Equivalent questions can be grouped so the user can answer once for the waiting agents.
-
-### Tracks the effect of corrections
-
-When a user changes a preference, Switchboard finds decisions that depended on the previous answer. It marks affected pending work for review and shows the user which decisions may need attention. Completed work is shown for review when its status cannot be determined.
+That is the product's promise: **a decision can travel between agents without losing its scope, history, or owner.**
 
 ```mermaid
 flowchart LR
-    OLD[Previous answer: aisle seat] --> D1[Flight decision]
-    OLD --> D2[Trip plan]
-    OLD --> D3[Email draft]
-    USER[User corrects answer: window seat] --> NEW[Current answer]
-    NEW -. replaces .-> OLD
-    D1 -->|Pending| CHECK[Check again]
-    D2 -->|Completed| REVIEW[Show for review]
-    D3 -->|Effect unclear| FLAG[Flag for review]
+    A[Codex] --> S[Switchboard]
+    B[Claude Code] --> S
+    C[Other compatible agents] --> S
+    S -->|Current answer applies: return a receipt| A
+    S -->|Needs your judgment| I[One decision inbox]
+    I --> Y[You]
+    Y -->|Answer or correct| S
 ```
 
-### Checks context boundaries
+## What you get
 
-An answer for staging should not apply to production just because the question uses similar words. Switchboard checks scope before it uses similarity to match an answer.
+| Capability | What it means in daily use |
+|---|---|
+| **A shared inbox** | Compatible unresolved questions can be grouped so several waiting agents receive one human answer. |
+| **Scoped rules** | Project, environment, intent, and other required context determine where an answer applies. |
+| **Decision receipts** | See why an answer was returned, the rule version behind it, and recorded downstream uses. |
+| **Corrections with impact tracking** | See which earlier decisions relied on a superseded rule and which work needs another look. |
+| **Visible autonomy** | An Autonomy Passport shows each category's stage, evidence, holds, and limits. |
+| **Proposal steering** | Ask for a cheaper, simpler, or different direction without treating that gesture as authorization. |
 
-### Separates user evidence from agent claims
+The intended impact is fewer repeated interruptions, fewer stale assumptions, and corrections you can follow through the work. Those outcomes are what the evaluation measures; they are not assumed from tool connectivity alone.
 
-An agent report that an action worked is not the same as a user confirming the result. Agent reports, model estimates, and synthetic test data are stored as lower-trust evidence. They do not count as user-confirmed evidence.
+## How a decision earns an answer
+
+Switchboard checks hard locks and mandatory scope before matching an existing rule. It then applies the category's stage, recalibration holds, and configured risk gate.
+
+- **`shadow`** records what the system would have answered and queues the question.
+- **`suggest`** proposes an answer for human review.
+- **`warn`** returns an answer with a notice the user can review or veto.
+- **`auto`** returns an eligible answer without another interruption.
+
+New categories start in `shadow`. Stages are configured; the system does not silently promote itself. The evidence-based risk gate defaults to observation mode (`SWITCHBOARD_RISK_GATE_MODE=shadow`); `enforce` makes insufficient evidence a reason to defer. Hard locks and mandatory scope checks apply independently of that setting.
+
+Payments, deletions, messages to new recipients, and actions classified as irreversible are locked for automatic answering. A model, a learned preference, or an Away-mode grant cannot remove those locks.
+
+When Switchboard defers, the agent leaves the question in its inbox and continues independent work. It must not guess, repeat the question directly to the user, or treat a queued request as permission.
+
+## Architecture
+
+MCP and REST enter the same decision service. The web interface is where you answer, correct, steer, and inspect the results.
 
 ```mermaid
 flowchart TD
-    USER[User confirms or corrects] -->|Can guide decisions| TRUSTED[User-confirmed evidence]
-    TOOL[Tool event] -->|Shows an action occurred| ACTION[Action evidence]
-    AGENT[Agent report] -->|Unverified| LOWER[Lower-trust evidence]
-    MODEL[Model estimate or synthetic data] -->|Not user-confirmed| LOWER
+    CLIENTS[Compatible agent clients] --> INGRESS[Authenticated MCP / REST]
+    INGRESS --> SERVICE[Switchboard decision service]
+    USER[You: desktop or mobile browser] <--> UI[Inbox / rules / steering / passport]
+    UI <--> SERVICE
+    SERVICE --> POLICY[Locks / scope / matching / stage / risk gate]
+    META[Meta model on Baseten: optional rule selection] -.-> POLICY
+    POLICY <--> DB[(SQLite ledger: rules / decisions / receipts / evidence)]
+    POLICY --> RESULT[Answer with receipt / suggestion / defer]
+    RESULT --> INGRESS
 ```
 
-### Shows the current autonomy level
+**The application owns authorization.** Exact rules and local similarity matching work without model calls. Optional Meta reasoning can select an existing eligible rule; it cannot invent an active rule, lower risk, or authorize an action. Model confidence is not treated as a calibrated probability.
 
-The Autonomy Passport shows each category's current stage: `shadow` (log the result), `suggest` (ask the user), `warn` (return an answer with a notice), or `auto` (return an answer without asking). It also shows the evidence and limits behind that stage. After a correction, the affected part of a category returns to probation before it can regain trust.
+Each decision retains a versioned policy trace. Dependency records connect receipts to downstream work. Human confirmations and corrections can contribute to calibration; agent claims, model inferences, tool events, and synthetic traces do not count as human preference labels.
 
-## How a question is handled
+The backend is Python/FastAPI, the interface is React/TypeScript, and MCP connects the clients. A local installation keeps its ledger on the machine. Hub mode sends authenticated agent requests to one shared deployment. The current Modal hub uses a persistent volume and a single SQLite writer.
 
-```mermaid
-flowchart TD
-    Q[Agent asks a question] --> SAFE{Is the action locked or risky?}
-    SAFE -->|Yes| HUMAN[Ask the user]
-    SAFE -->|No| MATCH{Is there a current answer?}
-    MATCH -->|No| HUMAN
-    MATCH -->|Yes| SCOPE{Does the answer fit this context?}
-    SCOPE -->|No| HUMAN
-    SCOPE -->|Yes| USE[Return the answer with a receipt]
-```
+### Where Meta, Baseten, and Modal fit
 
-Switchboard checks risk, existing answers, and scope before returning an answer. If it cannot resolve a question safely, it defers to the user.
+| Component | Role |
+|---|---|
+| **Meta model through Baseten** | Optional reasoning and semantic rule selection, using the configured Muse Spark Open model endpoint. |
+| **Modal** | Hosts the Switchboard hub, persistent ledger, and configured model endpoints. The backend also supports Modal reasoning adapters. |
+| **SAM 3.1 / Muse Image** | Optional image grounding and concept previews through configured provider endpoints. |
 
-Locked actions include payments, deletions, messages to new recipients, and other irreversible actions. In version 1, these actions always require a user decision. Rules and learned preferences cannot override that requirement. Away mode cannot bypass it.
+Visual Scout can ground a question in an object selected from an image. Concept previews let you explore a proposal's direction. Generated concepts are labelled; unknown prices or facts remain unknown. **Steering changes a draft. It does not buy, send, or delete.**
 
-## Architecture and feature boundaries
+## Agent support today
 
-The web API and MCP server use the same request pipeline. They do not maintain separate rule or permission engines.
+The November 2026 integration pass tested actual MCP calls and authenticated identities, including launches from an unrelated working directory.
 
-```mermaid
-flowchart LR
-    CLIENT[Agent or web interface] --> ADAPTER[REST or MCP adapter]
-    ADAPTER --> VALIDATE[Validate and normalize request]
-    VALIDATE --> CORE[Risk, scope, and rule checks]
-    MODEL[Optional model] -. selects an eligible rule candidate .-> CORE
-    CORE --> GOVERN[Configured category stage and risk gate]
-    GOVERN --> RESULT[Answer, suggestion, or defer]
-    GOVERN --> LEDGER[(SQLite decision ledger)]
-    RESULT --> LEDGER
-```
+| Client | Verified connection | Automatic Switchboard action gate |
+|---|---|---|
+| Codex desktop / CLI | Global and project configuration; authenticated MCP calls | Ask-first instructions; no pre-tool gate verified |
+| Claude Code / extension | Native CLI connection and authenticated MCP calls | Project hook, including failure blocking |
+| OpenCode | Native CLI connection and authenticated MCP calls | Project plugin; broken credentials keep actions blocked |
+| Muse Code | Authenticated calls from the saved user configuration | Ask-first instructions |
+| Claude Desktop | Authenticated calls from both Windows configuration locations | Ask-first instructions |
+| Hermes | Native Windows installation, native MCP discovery, authenticated calls | Ask-first instructions |
+| Claude / ChatGPT mobile | Hosted OAuth discovery, PKCE, MCP calls, refresh, and revocation | **Account/device linking remains pending** |
 
-The model can help select an existing eligible rule when optional semantic matching is enabled. The application checks risk, scope, authorization, and the category stage. A model cannot create or activate a rule, lower a risk classification, or authorize an action.
+MCP gives an agent access to Switchboard. Enforcing every tool call requires a harness-specific gate. The installed Claude Code and OpenCode gates apply in this project; other clients must follow their instructions. Existing sessions need an MCP reload or restart after configuration changes.
 
-The features have separate roles:
+See the [client support report](integrations/CLIENT_SUPPORT.md), [Claude Code gate](integrations/CLAUDE_CODE_ACTION_GATE.md), [OpenCode gate](integrations/OPENCODE_ACTION_GATE.md), and [mobile connector setup](integrations/CLAUDE_MOBILE.md).
 
-- **MCP and REST** connect agents and the web interface to the same decision service.
-- **Harness-specific action gates** can check a tool call before an agent executes it. MCP support alone does not intercept every tool call.
-- **Steering** changes a proposal draft. It does not approve or execute the proposal. Approval is a separate user action.
-- **The Autonomy Passport** shows the category's current stage, evidence, and limits. It reports policy state; it is not a second permission system.
-- **Hard locks** always require a user decision. The category risk gate is a separate check that can defer when evidence is insufficient or outside its target.
+## Run locally
 
-### What has changed in the backend
-
-Each decision now stores a versioned, privacy-minimized policy trace. It records the policy versions, risk reasons, effective category stage, matcher tier, selected rule version, scope result, and decision reason. It stores a fingerprint of request context instead of copying raw context into the trace.
-
-Request identity includes permission-relevant risk hints and option values. A request that changes one of these values is treated as a different request. An agent may mark a request as `locked`, which can raise the server's risk classification. An agent cannot use a hint to lower it. The supported hints are validated at the API, MCP, and remote interfaces.
-
-Optional hosted models may select an existing rule candidate. They do not provide calibrated confidence scores. The system does not treat a model's self-reported confidence as a probability.
-
-### Adaptive policy work is still in progress
-
-The current code adds decision traces and safer request validation. It does not yet let AI change active autonomy policies. Category stages remain configured, and locks stay under deterministic application control. The planned policy registry, evidence-based proposals, shadow evaluation, and measured promotion are future work. A policy change will need validation and outcome evidence before it can affect live decisions.
-
-## Visual features
-
-- **Visual Scout** uses SAM 3.1 to segment objects in an image. The user can select an object, such as a lamp, and ask a question about it.
-- **Muse Image** can generate or edit concept previews while the user steers a proposal. The four directions can represent cheaper, more comfortable, less obvious, or simpler options.
-- Generated images are labelled as concepts. They are not presented as real product photos. Prices and other facts come from user-provided data or are marked unknown.
-
-Gestures can change a proposal. They cannot approve a purchase, send a message, or delete data.
-
-## Quickstart
+Requires Python 3.12+, [uv](https://docs.astral.sh/uv/), and Node.js/npm for the React interface.
 
 ```powershell
 uv sync
+npm --prefix frontend ci
+npm --prefix frontend run build
 uv run python -m switchboard.app
 ```
 
-Open **http://127.0.0.1:8765** in your browser.
+Open **http://127.0.0.1:8765**. A fresh checkout runs without model credentials. Optional features and provider settings are documented in [.env.example](.env.example).
 
-By default, the decision ledger is stored on your machine. Model calls are optional. If a model provider fails, Switchboard defers instead of guessing.
+To use Meta reasoning through Baseten, keep `BASETEN_API_KEY` in your private `.env`, select `SWITCHBOARD_REASONING_PROVIDER=baseten`, and enable `SWITCHBOARD_ENABLE_T3=true`. The example configuration also supports Modal and Meta API adapters. Model calls are opt-in; an unavailable provider cannot supply an automatic answer.
 
-### Use the interface on your phone
+For frontend development, run `npm --prefix frontend run dev` alongside the backend. Vite serves port **5173** and proxies API requests to **8765**.
 
-The web interface supports mobile screens. To access it from a phone, run the tunnel script and open the login link it prints:
+### Connect a client
+
+Register a dedicated agent in **Agents & rules**. Save its one-time key in a private file, then generate the client's configuration:
+
+```powershell
+uv run python -m switchboard.onboard --agent codex --api-key-file C:/private/codex.key
+```
+
+Merge the generated entry into the client's existing settings. Other supported names include `claude-code`, `opencode`, `muse`, `claude-desktop`, and `hermes`. Add `--remote https://your-hub.example` to share a hosted ledger. Generated files go to ignored `integrations/generated/`; never commit real credentials.
+
+Start verification with **`get_connection_status`** and check the expected agent identity, then call **`get_rules`**. Discovering tools alone does not establish a working connection. Failed hub lookups return an explicit error rather than an apparently empty rule set.
+
+The nine MCP tools cover three workflows:
+
+| Workflow | Tools |
+|---|---|
+| Decide | `ask`, `get_rules`, `get_action_request_status` |
+| Verify and account for use | `get_connection_status`, `record_use`, `report_outcome` |
+| Steer a proposal | `submit_proposal`, `get_steering`, `revise_proposal` |
+
+Agents should ask with a stable request ID, honor the returned scope, record receipt use before dependent work, and report outcomes as agent assertions. Agent identity comes from credentials, never a name supplied in a request. See [AGENTS.md](AGENTS.md) for the protocol and [the external harness](harness/external_harness.py) for an MCP example.
+
+### Use it from your phone
+
+The **Switchboard web interface** works on mobile screens. For a local instance, the [tunnel script](scripts/start-tunnel.ps1) creates an authenticated login link:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/start-tunnel.ps1
 ```
 
-The link signs the phone in and creates a 30-day cookie. Treat the link like a password. Anyone who has it can access the workspace as you. When `SWITCHBOARD_UI_TOKEN` is set, the interface requires login. The tunnel script sets this token.
+Treat that link like a password; it grants operator access and sets a 30-day cookie. A token-protected hosted hub also serves the interface directly.
 
-## Connect agents with MCP
+Connecting **Claude or ChatGPT's mobile app** is a separate account-level OAuth step. The server flow is tested; installation in the user's accounts and phones is still pending. See [mobile setup](integrations/CLAUDE_MOBILE.md).
 
-Register an agent in the **Agents & rules** tab. Put its key in the agent's environment, then start the Switchboard MCP server:
+### Deploy on Modal
 
-```powershell
-$env:SWITCHBOARD_AGENT_KEY = "sb_..."
-uv run python -m switchboard.mcp_server
-```
-
-The default transport is stdio. To use Streamable HTTP instead, set the transport variable and start the server:
+Configure the existing Modal profile, `switchboard-secrets`, and the public HTTPS origin for OAuth. Build the frontend and back up the persistent ledger before deployment:
 
 ```powershell
-$env:SWITCHBOARD_MCP_TRANSPORT = "streamable-http"
-uv run python -m switchboard.mcp_server
+$env:SWITCHBOARD_MCP_PUBLIC_URL = "https://your-modal-function-host"
+$env:SWITCHBOARD_BUILD_ID = "your-git-commit"
+modal deploy --strategy recreate modal_app.py
 ```
 
-The HTTP endpoint is **http://127.0.0.1:8766/mcp**.
+The hosted MCP endpoint is `<public-origin>/mcp`. OAuth and operator routes have separate authentication. Keep one container while using the SQLite volume; `recreate` avoids overlapping writers and delayed rolling replacements. See [modal_app.py](modal_app.py) and the [deployment notes](integrations/CLIENT_SUPPORT.md#enforcement-and-deployment).
 
-The MCP tools are `ask`, `get_rules`, `get_action_request_status`, `report_outcome`, and `record_use`. Switchboard identifies an agent from its credentials, not from a name in the request. The repository includes a `.mcp.json` example for compatible clients and a demo harness in `harness/`.
+## Evidence and limits
 
-Some integrations also add a pre-tool gate. For details, see the [OpenCode action gate](integrations/OPENCODE_ACTION_GATE.md) and [Claude Code action gate](integrations/CLAUDE_CODE_ACTION_GATE.md). These gates are harness-specific. MCP support alone does not intercept every action an agent can take.
+The integration pass verified **173 backend tests**, the frontend production build, authenticated client calls, mobile OAuth flows, and seven OpenCode gate scenarios. These establish tested behavior, not universal compliance by every agent or a connection to every user's phone.
 
-### Run the frontend during development
+The [replay evaluator](switchboard/evaluation.py) compares the same **synthetic** preference-change traces:
 
-```powershell
-cd frontend
-npm install
-npm run dev      # http://127.0.0.1:5173, proxies API requests to :8765
-npm run build    # FastAPI serves the built frontend at /
-```
-
-## Evaluation results
-
-The replay harness compares four strategies using the same synthetic preference-change traces. The table reports how often each strategy answered without asking, how many wrong answers it gave, and how often it kept using an old preference.
-
-| Approach | Questions handled without asking | Wrong answers | Old preference reused |
+| Strategy | Answered automatically | Wrong automatic answers | Stale answers after a correction |
 |---|---:|---:|---:|
-| Never learns (B0) | 91% | 8 | 8 |
-| Learns instantly, no probation (B1) | 91% | 0 | 0 |
-| Switchboard (B2) | 73% | 0 | 0 |
-| Switchboard with trust checks (B3) | 73% | 0 | 0 |
+| Ignore the correction (B0) | 91% | 8 | 8 |
+| Apply it and immediately resume (B1) | 91% | 0 | 0 |
+| Switchboard with recalibration holds (B2) | 73% | 0 | 0 |
+| B2 with evidence-integrity checks (B3) | 73% | 0 | 0 |
 
-```mermaid
-xychart-beta
-    title "Old preference reused after correction"
-    x-axis [Never learns, Learns instantly, Switchboard]
-    y-axis "Old answers reused" 0 --> 9
-    bar [8, 0, 0]
-```
+The simple trace favors immediate reuse. The harder question is what happens when the correction itself is wrong: in the noisy-correction trace, recalibration gives **0 wrong automatic answers versus B1's 3**, at **43% versus 100% coverage**. More review buys an opportunity to catch the mistake. When the supplied scope is wrong, both can fail; a hold cannot recover a boundary the system was never told.
 
-In these traces, B2 asks more often after a correction. Only confirmations of the held rule version count; unrelated answers and answers that disagree with that version do not release its hold. In the current scenario where the first correction is wrong, probation produces 0 wrong automatic answers, compared with 3 for B1, at 43% versus 100% automatic coverage. When a correction has the wrong scope, both approaches can fail because the system was not given the right boundary.
+These are small, correlated synthetic traces, not real-user results or a production error-rate guarantee. B3's difference is evidence eligibility; it does not change the simple trace's answers. Adaptive policy proposals, automatic promotion, and AI rewriting of active autonomy policies remain future work.
 
-A separate adversarial trace sends false success reports from agents. A strategy that trusts agent reports becomes contaminated. Switchboard does not count those reports as user-confirmed evidence.
-
-These results come from synthetic traces, not real users. The sample is small, and the results do not establish a production error rate or guarantee a 2% mistake rate. They show the trade-offs in the tested scenarios.
-
-## Run the test suite
+### Verification
 
 ```powershell
 uv run pytest -q
+node tests/test_opencode_gate.mjs
 ```
 
-The suite includes backend policy, evidence, migration, cache, authentication, and integration regressions. Enable the subprocess MCP-over-HTTP test with `SWITCHBOARD_IT=1`; it is skipped by default.
-
-## Optional model providers
-
-Model providers are optional and controlled by feature flags. Provider failures result in a deferral.
-
-| Provider | Role | Model |
-|---|---|---|
-| Modal | Reasoning (T3) | Muse-Spark-Open-816B-A42B (self-hosted endpoint) |
-| Baseten | Reasoning (T3) | `meta-models/muse-spark-open-1026` |
-| Meta Model API | Reasoning, SAM 3.1, and Muse Image | `muse-spark-1.3`, `sam-3.1`, `muse-image-1.0` |
+Set `SWITCHBOARD_IT=1` to include the real subprocess MCP-over-HTTP test. Backend coverage includes policy, scope, corrections, evidence integrity, migrations, cache behavior, authentication, OAuth, and portable client configuration.
