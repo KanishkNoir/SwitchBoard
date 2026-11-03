@@ -8,10 +8,15 @@ the hooks load.
 
 1. Make sure the Switchboard hub is reachable and the existing workspace
    `switchboard` MCP server can authenticate. The hook reads its agent key from
-   the process environment or the existing `.mcp.json` in memory; it does not
-   print or copy the key.
+   `SWITCHBOARD_AGENT_KEY`, `SWITCHBOARD_AGENT_KEY_FILE`, or the existing
+   `.mcp.json` server environment; it does not print the key.
 2. Restart Claude Code with this workspace open so it loads
    `.claude/settings.local.json`.
+   For a fresh checkout, merge `.claude/settings.example.json` into that local
+   file. Keep `onFailure: "block"` on PreToolUse: Claude Code 2.1.295+ then blocks
+   a missing executable, crash, invalid output, or timeout. The exec-form args
+   keep Windows paths with spaces intact. The PowerShell wrapper uses this
+   checkout's `.venv` Python and exits 2 if that runtime is missing.
 3. Try a tool call that can change state. If Switchboard defers the request,
    that call stays blocked while the hook waits for an answer in the Switchboard
    inbox, for up to five minutes by default. An explicit one-time allow lets the

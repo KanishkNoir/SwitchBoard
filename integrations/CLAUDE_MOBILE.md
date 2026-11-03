@@ -10,7 +10,8 @@ and Android apps can then use connectors already added to the account.
    origin of the deployed `web` function. Use the origin only; do not add
    `/mcp` or a trailing slash. Modal API credentials remain in the existing
    Modal profile or `MODAL_TOKEN_ID` / `MODAL_TOKEN_SECRET` environment vars.
-2. Deploy with `modal deploy modal_app.py`; the app forwards this public URL to
+2. Back up the persistent ledger, then deploy with
+   `modal deploy --strategy recreate modal_app.py`; the app forwards this public URL to
    the worker as a runtime environment value. It is configuration, not a secret.
 3. Confirm the deployment exposes `/mcp` and its OAuth discovery endpoints.
 
@@ -28,8 +29,10 @@ Keep the current one-container limit while the hub uses the SQLite Volume.
    to that agent. The key is not given to Claude.
 4. Add an ask-first instruction in Claude's custom instructions: use
    `switchboard.ask` before making a preference or authorization decision;
-   honor its scope and decision, and defer to the user when Switchboard defers.
-5. Test the connection with `switchboard.get_rules` (read-only), then enable the
+   honor its scope and decision. On defer, leave the question in Switchboard's
+   inbox and continue independent work without guessing or asking it again.
+5. Test `switchboard.get_connection_status` and confirm the expected agent
+   identity, then `switchboard.get_rules` (read-only), then enable the
    connector in Claude mobile.
 
 To revoke access, disconnect the connector in Claude or disable the associated

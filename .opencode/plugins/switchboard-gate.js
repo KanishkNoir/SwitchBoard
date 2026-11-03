@@ -24,7 +24,11 @@ async function loadCredentials(directory) {
       // An absent or non-JSONC project config is fine; environment variables can supply credentials.
     }
   }
-  const key = process.env.SWITCHBOARD_AGENT_KEY || configured.SWITCHBOARD_AGENT_KEY || ""
+  let key = process.env.SWITCHBOARD_AGENT_KEY || configured.SWITCHBOARD_AGENT_KEY || ""
+  if (!key || key.startsWith("${")) {
+    const keyFile = process.env.SWITCHBOARD_AGENT_KEY_FILE || configured.SWITCHBOARD_AGENT_KEY_FILE
+    key = keyFile ? (await readFile(keyFile, "utf8")).trim() : ""
+  }
   const baseUrl = (process.env.SWITCHBOARD_REMOTE_URL || configured.SWITCHBOARD_REMOTE_URL || "").replace(/\/+$/, "")
   if (baseUrl) {
     const parsed = new URL(baseUrl)
