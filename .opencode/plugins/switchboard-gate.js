@@ -114,7 +114,14 @@ async function waitForHumanAnswer(credentials, questionId) {
 }
 
 export const SwitchboardGate = async ({ directory }) => {
-  const credentials = await loadCredentials(directory)
+  // Keep the hook registered even when configuration is broken. Throwing
+  // during plugin initialization can leave OpenCode without a gate at all.
+  let credentials
+  try {
+    credentials = await loadCredentials(directory)
+  } catch {
+    credentials = { key: "", baseUrl: "" }
+  }
   const approvedCalls = new Map()
 
   return {

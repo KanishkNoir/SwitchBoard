@@ -10,7 +10,7 @@ All clients use the same persistent ledger; each harness has its own identity.
 |---|---|---|
 | Codex desktop / CLI | Global and project MCP entries; dedicated `codex-hub` credential file | Fresh MCP initialization, authenticated identity, nine tools and four rules; CLI sees enabled server |
 | Claude Code / extension | Global and project MCP entries; dedicated `claude-code-hub` | Native `claude mcp list` connected; authenticated calls; native PowerShell hook allows reads/control-plane and denies invalid-auth actions |
-| OpenCode | Project MCP entry and gate plugin repaired; existing `opencode-hub` identity | Native MCP list connected; authenticated calls; five synthetic gate scenarios pass |
+| OpenCode | Project MCP entry and gate plugin repaired; existing `opencode-hub` identity | Native MCP list connected; authenticated calls; five synthetic gate scenarios and two broken-config startup scenarios pass |
 | Muse Code | Existing user settings merged; existing `muse-code-hub` identity | Actual stdio initialization and authenticated tool calls from those settings; provider/model preserved |
 | Claude Desktop | Both Roaming and Microsoft Store settings repaired | Actual stdio initialization and authenticated calls from both saved configurations |
 | Hermes | Official native Windows installation; `%LOCALAPPDATA%/hermes/config.yaml`; dedicated `hermes-hub` | Native `hermes mcp test switchboard` discovers nine tools; authenticated MCP identity/rules verified |
