@@ -72,10 +72,10 @@ def call_api(url: str, key: str, path: str, body: dict | None = None) -> dict:
 
 
 def human_answer(url: str, key: str, question_id: str,
-                 status_route: str = "/api/action-requests/") -> dict:
+                 status_route: str = "/api/action-requests/{question_id}") -> dict:
     wait_seconds = min(max(int(os.environ.get("SWITCHBOARD_GUARD_WAIT_SECONDS", "300")), 1), 900)
     deadline = time.monotonic() + wait_seconds
-    endpoint = status_route + urllib.parse.quote(question_id, safe="")
+    endpoint = status_route.format(question_id=urllib.parse.quote(question_id, safe=""))
     while time.monotonic() < deadline:
         status = call_api(url, key, endpoint)
         if status.get("status") == "answered":
@@ -87,7 +87,7 @@ def human_answer(url: str, key: str, question_id: str,
 
 
 def answer_for(url: str, key: str, response: dict,
-               status_route: str = "/api/action-requests/") -> dict:
+               status_route: str = "/api/action-requests/{question_id}") -> dict:
     if response.get("decision") == "answer":
         answer = response.get("answer") or {}
         receipt_id = response.get("receipt_id")
@@ -160,7 +160,7 @@ def choose_option(answer: dict, options: list[dict]) -> str | None:
 def ask_switchboard(url: str, key: str, *, request_id: str, question: str,
                     category: str, intent_type: str, reversibility: str,
                     context: dict, action: dict, options: list[dict],
-                    status_route: str = "/api/action-requests/") -> dict:
+                    status_route: str = "/api/action-requests/{question_id}") -> dict:
     result = call_api(url, key, "/api/ask", {
         "request_id": request_id,
         "question": question[:4000],
@@ -201,7 +201,7 @@ def answer_user_question(event: dict, url: str, key: str) -> None:
             context={"harness": "claude_code", "question_index": index},
             action={"type": "user_question", "options": [o["label"] for o in options]},
             options=options,
-            status_route="/api/questions/",
+            status_route="/api/questions/{question_id}/answer",
         )
         selected = choose_option(approval["answer"], options)
         if selected is None:

@@ -54,7 +54,8 @@ class SwitchboardService:
         self.store.execute(
             "INSERT INTO agents(id,name,kind,key_hash,scopes_json,enabled,created_at) VALUES(?,?,?,?,?,1,?)",
             (aid, name, kind, _hash_key(key),
-             json.dumps(scopes or ["ask", "get_rules", "report_outcome", "record_use"]), now_iso()))
+             json.dumps(scopes if scopes is not None else
+                        ["ask", "get_rules", "report_outcome", "record_use"]), now_iso()))
         self.store.emit("human", "local_user", "agent.registered", "agent", aid, {"name": name})
         return {"agent_id": aid, "api_key": key}  # key shown once at registration
 
@@ -101,12 +102,19 @@ class SwitchboardService:
         if not dec:
             raise SwitchboardError("NOT_FOUND", "decision")
         q = self.store.query_one("SELECT * FROM questions WHERE id=?", (dec["question_id"],))
-        agent_row = agent or self.store.query_one("SELECT * FROM agents WHERE id=?", (q["agent_id"],))
+        if agent is not None and agent["id"] != q["agent_id"]:
+            raise SwitchboardError("NOT_FOUND", "decision")
+        agent_row = self.authenticate_agent_id(q["agent_id"])
         req = QuestionRequest(
             request_id=f"reval-{decision_id[:8]}-{new_id()[:8]}", question=q["question_text"],
             category=q["category"], intent_type=q["intent_type"], reversibility=q["reversibility"],
             deadline_at=q["deadline_at"], options=json.loads(q["options_json"] or "[]"),
-            context=json.loads(q["context_json"] or "{}"))
+            context=json.loads(q["context_json"] or "{}"),
+            action=json.loads(q["action_json"] or "null"),
+            parent_receipts=json.loads(q["parent_receipts_json"] or "[]"),
+            # Old ledgers did not retain actions. A recorded lock is a risk
+            # floor even when those original inputs can no longer be recovered.
+            risk_hint="locked" if q["risk_class"] == "locked" else q["risk_hint"])
         self.store.emit("human", "local_user", "decision.revalidation_queued", "decision", decision_id, {})
         resp = self.ask(agent_row, req)
         self.store.emit("system", "switchboard", "decision.revalidated", "decision", decision_id,
@@ -189,6 +197,9 @@ class SwitchboardService:
         # T0 (keyword/exact, human-supplied flip) needs 1 more distinct context; semantic needs 3.
         required_m = 1 if (pred_for_hold.get("keywords") or pred_for_hold.get("exact_question")) else 3
         self.store.execute(
+            "UPDATE recalibration_holds SET status='superseded' WHERE rule_id=? AND status='held'",
+            (rule_id,))
+        self.store.execute(
             "INSERT INTO recalibration_holds(id,category,rule_id,new_version_id,scope_fingerprint,"
             "preference_epoch,required_m,fresh_count,seen_contexts_json,status,created_at)"
             " VALUES(?,?,?,?,?,?,?,0,'[]','held',?)",
@@ -221,18 +232,31 @@ class SwitchboardService:
                         {"action": "holds_cleared_manually"})
         return {"category": category, "cleared": True}
 
-    def _record_fresh_evidence(self, category, context: dict, source: str):
-        """Count one distinct human-confirmed context toward held slices in this category.
+    def _record_fresh_evidence(self, decision_id, source: str, answer=None):
+        """Count confirmations of the held version, after its hold began.
 
-        Only called from human evidence paths. Agent/model labels never reach here (B3).
-        Duplicated contexts do not farm m.
+        The original prediction must have used that version in this scope.
+        One-off human answers must also agree with its answer. Callers only
+        enter here for a human answer or a positive correctness confirmation.
         """
-        holds = self.store.query(
-            "SELECT * FROM recalibration_holds WHERE category=? AND status='held'", (category,))
-        if not holds:
+        if source not in ("answer_inbox", "confirm_feedback"):
             return
-        ctx_hash = sha256_hex(canonical_json(context or {}))
+        holds = self.store.query(
+            "SELECT h.*,rv.answer_json,rv.scope_json,q.context_json FROM recalibration_holds h "
+            "JOIN rule_versions rv ON rv.id=h.new_version_id "
+            "JOIN rules r ON r.id=h.rule_id AND r.active_version_id=rv.id "
+            "JOIN decision_rule_uses u ON u.rule_version_id=rv.id "
+            "JOIN decisions d ON d.id=u.decision_id JOIN questions q ON q.id=d.question_id "
+            "WHERE d.id=? AND h.status='held' AND r.status='active' AND rv.confirmed_by_human=1 "
+            "AND d.created_at>=h.created_at", (decision_id,))
         for hold in holds:
+            context = json.loads(hold["context_json"] or "{}")
+            if not evaluate_scope(json.loads(hold["scope_json"]), context)["valid"]:
+                continue
+            if source == "answer_inbox" and not self._answers_agree(
+                    json.loads(hold["answer_json"]), answer):
+                continue
+            ctx_hash = sha256_hex(canonical_json(context))
             seen = json.loads(hold["seen_contexts_json"])
             if ctx_hash in seen:
                 continue
@@ -248,6 +272,18 @@ class SwitchboardService:
                 self.store.execute(
                     "UPDATE recalibration_holds SET fresh_count=?, seen_contexts_json=? WHERE id=?",
                     (fresh, json.dumps(seen), hold["id"]))
+
+    @staticmethod
+    def _answers_agree(expected, observed):
+        if isinstance(expected, dict) and isinstance(observed, dict):
+            if "value" in expected and "value" in observed:
+                if ("option_id" in expected and "option_id" in observed
+                        and expected["option_id"] != observed["option_id"]):
+                    return False
+                return canonical_json(expected["value"]) == canonical_json(observed["value"])
+            if expected.get("option_id") is not None and observed.get("option_id") is not None:
+                return expected["option_id"] == observed["option_id"]
+        return canonical_json(expected) == canonical_json(observed)
 
     def active_rule_versions(self, category):
         rows = self.store.query(
@@ -274,6 +310,8 @@ class SwitchboardService:
 
     # ---------- ask ----------
     def ask(self, agent, req: QuestionRequest) -> dict:
+        if "ask" not in json.loads(agent["scopes_json"]):
+            raise SwitchboardError("FORBIDDEN_SCOPE")
         if not req.request_id or not req.question or not req.category:
             raise SwitchboardError("INVALID_SCHEMA", "request_id, question, category required")
         if len(req.question) > 4000:
@@ -325,12 +363,12 @@ class SwitchboardService:
             self.store.execute(
                 "INSERT INTO questions(id,request_id,agent_id,canonical_hash,question_text,category,intent_type,"
                 "risk_class,reversibility,deadline_at,options_json,context_json,status,created_at,parent_receipts_json,"
-                "risk_hint) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "risk_hint,action_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (qid, req.request_id, agent["id"], chash, normalize_text(req.question), req.category,
                  req.intent_type, risk["risk_class"], req.reversibility, req.deadline_at,
                  json.dumps(req.options), json.dumps(req.context), "received", now_iso(),
                  json.dumps(sorted({receipt_id.strip() for receipt_id in (req.parent_receipts or [])})),
-                 req.risk_hint))
+                 req.risk_hint, canonical_json(req.action) if req.action is not None else None))
             self.store.emit("agent", agent["id"], "question.received", "question", qid,
                             {"category": req.category}, correlation_id=req.request_id)
             # Queue first, decide second: locked questions still reach the
@@ -349,8 +387,8 @@ class SwitchboardService:
             if candidate and candidate["rule_version"]["rule_id"] in self.held_rule_ids(req.category):
                 return self._persist_decision(qid, req, cat, "deferred", "recalibration_pending",
                                               candidate["tier"], candidate, True, scope_result)
-            if self._away_grant_active(req.category, req.intent_type) and candidate:
-                stage = "auto"  # scoped grant upgrades suggest, never overrides locks or shadow
+            if stage == "suggest" and candidate and self._away_grant_active(req.category, req.intent_type):
+                stage = "auto"  # scoped grants upgrade suggest only
             if stage == "shadow":
                 return self._persist_decision(qid, req, cat, "shadow", "shadow",
                                               candidate["tier"] if candidate else "none",
@@ -421,6 +459,8 @@ class SwitchboardService:
 
     def action_request_status(self, agent, question_id: str, expected_intent="action_review") -> dict:
         """Return a human's one-time answer for a question owned by this agent."""
+        if "ask" not in json.loads(agent["scopes_json"]):
+            raise SwitchboardError("FORBIDDEN_SCOPE")
         question = self.store.query_one(
             "SELECT id,agent_id,intent_type FROM questions WHERE id=?", (question_id,)
         )
@@ -494,10 +534,16 @@ class SwitchboardService:
                 "INSERT OR IGNORE INTO decision_rule_uses(decision_id,rule_version_id,match_type,scope_result_json)"
                 " VALUES(?,?,?,?)", (did, candidate["rule_version"]["id"], candidate["match_type"],
                                      json.dumps(scope_result or {"result": "pass"})))
-        if mode == "warn":
-            # The answer stands unless vetoed: surface it as a notice, not a question.
+        if mode in ("auto", "warn"):
+            # Automatic answers no longer need a human answer. Warning-stage
+            # answers remain visible as notices, with their separate veto path.
             self.store.execute(
-                "UPDATE attention_items SET status='notified',updated_at=? WHERE question_id=? AND status='queued'",
+                "UPDATE attention_items SET status=?,updated_at=? WHERE question_id=? AND status='queued'",
+                ("notified" if mode == "warn" else "resolved", now_iso(), qid))
+            self.store.execute(
+                "UPDATE attention_batches SET status='resolved',resolved_at=? WHERE status='open' "
+                "AND id IN (SELECT batch_id FROM attention_items WHERE question_id=?) "
+                "AND NOT EXISTS (SELECT 1 FROM attention_items WHERE batch_id=attention_batches.id AND status='queued')",
                 (now_iso(), qid))
         rid = new_id()
         receipt_type = "answer" if mode in ("auto", "warn") else "defer"
@@ -746,6 +792,9 @@ class SwitchboardService:
             parent_receipts = question.get("parent_receipts")
             if parent_receipts is None:
                 parent_receipts = json.loads(question.get("parent_receipts_json") or "[]")
+            action = question.get("action")
+            if action is None:
+                action = json.loads(question.get("action_json") or "null")
         except AttributeError:
             return None
         payload = {"category": category, "intent_type": intent_type,
@@ -753,7 +802,7 @@ class SwitchboardService:
                    "question_tokens": sorted(tokens(question_text or "")),
                    "deadline_at": deadline, "risk_class": risk_class,
                    "reversibility": reversibility,
-                   "parent_receipts": sorted(parent_receipts or [])}
+                   "parent_receipts": sorted(parent_receipts or []), "action": action}
         return sha256_hex(canonical_json(payload))
 
     def _register_attention(self, qid, req, risk):
@@ -763,7 +812,7 @@ class SwitchboardService:
                     "question": req.question, "options": req.options,
                     "context": req.context or {}, "deadline_at": req.deadline_at,
                     "risk_class": risk["risk_class"], "reversibility": req.reversibility,
-                    "parent_receipts": sorted((req.parent_receipts or []))}
+                    "parent_receipts": sorted((req.parent_receipts or [])), "action": req.action}
         decision_key = self._attention_decision_key(key_data)
         batch_id = None
         existing = (self.store.query_one(
@@ -1005,6 +1054,9 @@ class SwitchboardService:
         answer_obj = answer if isinstance(answer, dict) else {"value": str(answer)}
         decisions, propagated = [], []
         for target_item, target_q in targets:
+            prediction = self.store.query_one(
+                "SELECT id FROM decisions WHERE question_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1",
+                (target_q["id"],))
             cat = self.category(target_q["category"])
             did, rid = new_id(), new_id()
             reason = "human_answered" if target_q["id"] == q["id"] else "human_answered_batch"
@@ -1026,11 +1078,12 @@ class SwitchboardService:
             decisions.append({"question_id": target_q["id"], "decision_id": did, "receipt_id": rid})
             if target_q["id"] != q["id"]:
                 propagated.append(target_q["id"])
+            if prediction:
+                self._record_fresh_evidence(prediction["id"], "answer_inbox", answer=answer_obj)
         if batch_id:
             self.store.execute(
                 "UPDATE attention_batches SET status='resolved',resolved_at=? WHERE id=? AND status='open'",
                 (now_iso(), batch_id))
-        self._record_fresh_evidence(q["category"], json.loads(q["context_json"] or "{}"), "answer_inbox")
         primary = next(record for record in decisions if record["question_id"] == q["id"])
         result = {"item_id": item_id, "evidence_id": ev,
                   "decision_id": primary["decision_id"], "receipt_id": primary["receipt_id"],
@@ -1231,12 +1284,8 @@ class SwitchboardService:
             (lid, decision_id, "correctness", label_value, eid, now_iso()))
         self.store.emit("human", actor, "feedback.admitted_to_calibration", "decision", decision_id,
                         {}, evidence_class="human_confirmed")
-        dec_q = self.store.query_one(
-            "SELECT q.category, q.context_json FROM decisions d JOIN questions q ON q.id=d.question_id"
-            " WHERE d.id=?", (decision_id,))
-        if dec_q:
-            self._record_fresh_evidence(dec_q["category"], json.loads(dec_q["context_json"] or "{}"),
-                                        "confirm_feedback")
+        if str(label_value).strip().lower() in self._POSITIVE_OUTCOMES:
+            self._record_fresh_evidence(decision_id, "confirm_feedback")
         self._drift_check_for_decision(decision_id)
         return {"evidence_id": eid, "label_id": lid, "eligible_for_calibration": True}
 

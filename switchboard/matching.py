@@ -20,8 +20,12 @@ class T0Matcher:
                 continue
             if pred.get("intent_type") and pred["intent_type"] != intent_type:
                 continue
-            kws = [k.lower() for k in pred.get("keywords", [])]
+            kws = [k.strip().lower() for k in pred.get("keywords", []) if isinstance(k, str) and k.strip()]
             text = question_text.lower()
+            # Examples belong to T1. An empty/semantic-only predicate must
+            # never become an unconditional exact match.
+            if not kws and not pred.get("exact_question"):
+                continue
             if kws and not all(k in text for k in kws):
                 continue
             if not kws and pred.get("exact_question") and pred["exact_question"].lower() != text.strip().lower():

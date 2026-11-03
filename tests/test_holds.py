@@ -63,11 +63,16 @@ def test_duplicate_context_does_not_farm_m():
     svc.supersede_rule(rid, new_answer={"value": "canary"})
     holds = svc.list_holds("purchase")
     assert holds and holds[0]["required_m"] == 3
+    def confirm(rid, context):
+        result = ask(svc, agent, rid, "preferred deployment destination", context)
+        item = next(i for i in svc.inbox() if i["question_id"] == result["question_id"])
+        svc.answer_inbox(item["id"], {"value": "canary"})
+
     for i in range(3):
-        svc._record_fresh_evidence("purchase", {"env": "staging"}, "answer_inbox")
+        confirm(f"duplicate-{i}", {"env": "staging"})
     assert svc.list_holds("purchase")[0]["fresh_count"] == 1  # same context counted once
-    svc._record_fresh_evidence("purchase", {"env": "staging", "team": "core"}, "answer_inbox")
-    svc._record_fresh_evidence("purchase", {"env": "staging", "team": "edge"}, "answer_inbox")
+    confirm("distinct-core", {"env": "staging", "team": "core"})
+    confirm("distinct-edge", {"env": "staging", "team": "edge"})
     assert svc.list_holds("purchase")[0]["status"] == "released"
 
 

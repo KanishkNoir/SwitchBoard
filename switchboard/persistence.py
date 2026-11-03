@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS questions(
   intent_type TEXT NOT NULL, risk_class TEXT NOT NULL, reversibility TEXT NOT NULL,
   deadline_at TEXT, options_json TEXT, context_json TEXT, status TEXT NOT NULL,
   created_at TEXT NOT NULL, parent_receipts_json TEXT NOT NULL DEFAULT '[]',
-  risk_hint TEXT,
+  risk_hint TEXT, action_json TEXT,
   UNIQUE(agent_id, request_id));
 CREATE TABLE IF NOT EXISTS rules(
   id TEXT PRIMARY KEY, category TEXT NOT NULL, created_at TEXT NOT NULL,
@@ -170,6 +170,7 @@ class Store:
         # Every mutating execute bumps the generation: read caches key on it,
         # so a write can never be followed by a stale read from this store.
         self.write_seq = 0
+        self._cache_id = new_id()
         journal = os.environ.get("SWITCHBOARD_JOURNAL_MODE", "wal").lower()
         if journal not in ("wal", "delete"):
             journal = "wal"
@@ -188,10 +189,32 @@ class Store:
                 "ALTER TABLE questions ADD COLUMN parent_receipts_json TEXT NOT NULL DEFAULT '[]'")
         if question_cols and "risk_hint" not in question_cols:
             self.conn.execute("ALTER TABLE questions ADD COLUMN risk_hint TEXT")
+        if question_cols and "action_json" not in question_cols:
+            self.conn.execute("ALTER TABLE questions ADD COLUMN action_json TEXT")
         decision_cols = {r[1] for r in self.conn.execute("PRAGMA table_info(decisions)")}
         if decision_cols and "policy_trace_json" not in decision_cols:
             self.conn.execute(
                 "ALTER TABLE decisions ADD COLUMN policy_trace_json TEXT NOT NULL DEFAULT '{}' ")
+        # Earlier corrections could leave multiple held versions of one rule.
+        # Only its current version can receive fresh evidence and hold it back.
+        self.conn.execute(
+            "UPDATE recalibration_holds SET status='superseded' WHERE status='held' "
+            "AND new_version_id IS NOT NULL AND EXISTS (SELECT 1 FROM rules "
+            "WHERE rules.id=recalibration_holds.rule_id AND active_version_id<>new_version_id)")
+        # Repair attention rows created by older versions that left answered
+        # questions queued. Preserve warning notices and any later human answer.
+        self.conn.execute(
+            "UPDATE attention_items SET status=CASE "
+            "WHEN (SELECT mode FROM decisions WHERE question_id=attention_items.question_id "
+            "ORDER BY created_at DESC,rowid DESC LIMIT 1)='warn' THEN 'notified' ELSE 'resolved' END, "
+            "updated_at=? WHERE status='queued' AND "
+            "(SELECT mode FROM decisions WHERE question_id=attention_items.question_id "
+            "ORDER BY created_at DESC,rowid DESC LIMIT 1) IN ('auto','warn','human')", (now_iso(),))
+        self.conn.execute(
+            "UPDATE attention_batches SET status='resolved',resolved_at=? WHERE status='open' "
+            "AND EXISTS (SELECT 1 FROM attention_items WHERE batch_id=attention_batches.id) "
+            "AND NOT EXISTS (SELECT 1 FROM attention_items WHERE batch_id=attention_batches.id AND status='queued')",
+            (now_iso(),))
         self.conn.commit()
         # Bound the WAL: SQLite auto-checkpoints past this size instead of
         # accumulating an unrecoverable multi-megabyte backlog on the volume.
@@ -199,6 +222,16 @@ class Store:
 
     def close(self):
         self.conn.close()
+
+    def cache_generation(self):
+        """Include commits from other connections, including stdio MCP writers.
+
+        SQLite data_version changes on external commits; write_seq covers this
+        connection's own writes. The instance ID separates replacement stores.
+        """
+        with self._lock:
+            version = self.query_one("PRAGMA data_version")["data_version"]
+            return self._cache_id, self.write_seq, version
 
     @contextmanager
     def transaction(self, immediate: bool = True):
