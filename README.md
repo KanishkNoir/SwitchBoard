@@ -22,7 +22,7 @@ Your assistants can build, write and research in parallel. You still carry the d
 
 ## Watch the demo
 
-<!-- DEMO_VIDEO -->
+https://github.com/user-attachments/assets/679017fc-f284-4617-9fe5-bbdb8fddfdd2
 
 **2:59 · narrated product walkthrough.** [Original 1080p MP4](https://github.com/KanishkNoir/SwitchBoard/releases/download/hackathon-demo-2026-11-04/Switchboard-Hackathon-Workshop.mp4) · [Subtitles](https://github.com/KanishkNoir/SwitchBoard/releases/download/hackathon-demo-2026-11-04/Switchboard-Hackathon-Workshop.srt) · [Video verification](https://github.com/KanishkNoir/SwitchBoard/releases/download/hackathon-demo-2026-11-04/verification-workshop.json)
 
