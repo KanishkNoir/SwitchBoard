@@ -1,5 +1,7 @@
 # Public playground
 
+[Open the public playground](https://cogni-noir--switchboard-playground-web.us-east.modal.run) — no login needed.
+
 The playground is a separate Modal app for people who want to try Switchboard without credentials. It uses the real decision service and built React interface with fictional sample agents and choices. It does not connect a visitor's native assistants.
 
 Visitors can answer in Focus, reuse a saved answer from another sample agent, test a project boundary, preview and apply a correction, inspect recorded draft dependencies and a rule-level hold, and steer a sample venue proposal. A deliberate reset starts that visitor's example over.
@@ -36,3 +38,5 @@ Do not add `switchboard-secrets`, a persistent volume, or a private hub URL to t
 ## Validation
 
 `tests/test_public_sandbox.py` checks visitor isolation, private service preservation, cross-workspace object access, model/API restrictions, actual correction holds and dependency previews, reset, concurrent reads and writes, cache separation, cookie flags, cross-origin writes, request size, capacity and expiry with an in-flight reader. Browser verification covers desktop and phone layouts, guided actions, Focus answers, reset and sample steering.
+
+On November 5, 2026 (India time), live build `fe651c4` passed anonymous access, two independent visitor sessions, scoped reuse, correction preview and hold, Focus answers, individual reset and blocked external APIs. The served frontend asset hash matched the verified build. The full local backend suite passed 244 tests, with subprocess MCP integration enabled, plus the existing OpenCode gate checks and frontend build. Live browser checks covered 1440×1000 and 390×844 without horizontal overflow. These checks establish the sample workflow, not native assistant compliance or real-user performance.
