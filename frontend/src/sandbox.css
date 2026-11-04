@@ -1,0 +1,27 @@
+.sandbox-panel { margin: 20px auto; padding: 24px; max-width: 1440px; border: 1px solid var(--line-strong); border-radius: var(--r-card); background: var(--panel); box-shadow: var(--shadow); }
+.sandbox-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.sandbox-label, .sandbox-step { font: 11px/1.5 var(--mono); color: var(--green); letter-spacing: .06em; }
+.sandbox-heading h2 { margin: 8px 0; font-size: clamp(22px, 3vw, 30px); letter-spacing: -.035em; line-height: 1.15; }
+.sandbox-intro { max-width: 950px; color: var(--dim); font-size: 14px; line-height: 1.65; margin: 8px 0 22px; }
+.sandbox-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; }
+.sandbox-steps > div { border-top: 1px solid var(--line); padding-top: 16px; }
+.sandbox-steps h3 { margin: 8px 0; font-size: 17px; letter-spacing: -.02em; }
+.sandbox-steps p { color: var(--dim); line-height: 1.6; font-size: 13px; min-height: 62px; margin: 8px 0 14px; }
+.sandbox-actions, .sandbox-reset { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.sandbox-panel button { min-height: 40px; font-size: 12px; white-space: normal; }
+.sandbox-reset { justify-content: flex-end; font-size: 12px; }
+.sandbox-note { color: var(--dim); font-size: 11px; line-height: 1.65; margin: 22px 0 0; max-width: 1060px; }
+.sandbox-preview, .sandbox-result { margin: 20px 0 0; border: 1px solid var(--line-strong); background: var(--panel2); border-radius: 12px; padding: 16px; font-size: 13px; line-height: 1.65; overflow-wrap: anywhere; }
+.sandbox-preview ul { margin: 10px 0; padding-left: 22px; }
+.sandbox-preview p { color: var(--dim); }
+.sandbox-error { color: var(--red); }
+.sandbox-compact { padding: 12px 20px; margin: 12px auto; }
+@media (max-width: 760px) {
+  .sandbox-panel { margin: 12px; padding: 18px; }
+  .sandbox-heading { flex-direction: column; gap: 10px; }
+  .sandbox-steps { grid-template-columns: minmax(0, 1fr); gap: 18px; }
+  .sandbox-steps p { min-height: 0; }
+  .sandbox-reset { justify-content: flex-start; }
+  .sandbox-compact .sandbox-heading { flex-direction: row; align-items: center; }
+  .sandbox-compact .sandbox-label { font-size: 9px; }
+}

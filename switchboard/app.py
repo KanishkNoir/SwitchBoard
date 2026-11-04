@@ -15,8 +15,12 @@ from .persistence import Store
 from .service import SwitchboardError, SwitchboardService
 
 UI_DIR = os.path.join(os.path.dirname(__file__), "ui")
-store = Store(settings.db_path if settings.db_path != ":memory:" else "switchboard.db")
-svc = SwitchboardService(store)
+# The public sandbox loads this route module with its own supplied service.
+# Each instance owns its caches and streams; no request swaps hub globals.
+svc = globals().get("_provided_service")
+if svc is None:
+    svc = SwitchboardService(Store(settings.db_path if settings.db_path != ":memory:" else "switchboard.db"))
+store = svc.store
 app = FastAPI(title="Switchboard", version="0.2.0")
 _subscribers: list[asyncio.Queue] = []
 
