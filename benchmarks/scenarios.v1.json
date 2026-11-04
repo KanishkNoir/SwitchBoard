@@ -1,0 +1,5678 @@
+{
+  "schema_version": 1,
+  "dataset_id": "switchboard-synthetic-v1",
+  "label_source": "authored_synthetic_oracle",
+  "design": "5 domains x 8 condition families; correlated controlled fixtures, not independent users",
+  "episodes": [
+    {
+      "id": "reports.stable_reuse",
+      "domain": "reports",
+      "family": "stable_reuse",
+      "rules": [
+        {
+          "id": "main",
+          "category": "bench_reports",
+          "predicate": {
+            "keywords": [
+              "report",
+              "format"
+            ],
+            "example_question": "Which report format should this draft use?",
+            "intent_type": "preference"
+          },
+          "answer": {
+            "value": "markdown"
+          },
+          "scope": {
+            "mandatory": {
+              "project": "atlas",
+              "workspace": "reports"
+            }
+          }
+        }
+      ],
+      "steps": [
+        {
+          "op": "ask",
+          "id": "initial",
+          "agent": "a",
+          "question": "Which report format should this draft use?",
+          "category": "bench_reports",
+          "context": {
+            "project": "atlas",
+            "workspace": "reports"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "markdown",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "second_agent",
+          "agent": "b",
+          "question": "Which report format should this draft use?",
+          "category": "bench_reports",
+          "context": {
+            "project": "atlas",
+            "workspace": "reports"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "markdown",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "paraphrase",
+          "agent": "b",
+          "question": "For this task, please choose the report format.",
+          "category": "bench_reports",
+          "context": {
+            "project": "atlas",
+            "workspace": "reports"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "markdown",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "repeated",
+          "agent": "a",
+          "question": "Which report format should this draft use?",
+          "category": "bench_reports",
+          "context": {
+            "project": "atlas",
+            "workspace": "reports"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "markdown",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        }
+      ]
+    },
+    {
+      "id": "reports.scope_boundaries",
+      "domain": "reports",
+      "family": "scope_boundaries",
+      "rules": [
+        {
+          "id": "main",
+          "category": "bench_reports",
+          "predicate": {
+            "keywords": [
+              "report",
+              "format"
+            ],
+            "example_question": "Which report format should this draft use?",
+            "intent_type": "preference"
+          },
+          "answer": {
+            "value": "markdown"
+          },
+          "scope": {
+            "mandatory": {
+              "project": "atlas",
+              "workspace": "reports"
+            }
+          }
+        }
+      ],
+      "steps": [
+        {
+          "op": "ask",
+          "id": "in_scope",
+          "agent": "b",
+          "question": "Which report format should this draft use?",
+          "category": "bench_reports",
+          "context": {
+            "project": "atlas",
+            "workspace": "reports"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "markdown",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "other_project",
+          "agent": "a",
+          "question": "Which report format should this draft use?",
+          "category": "bench_reports",
+          "context": {
+            "project": "boreal",
+            "workspace": "reports"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "markdown",
+            "must_ask": true,
+            "reason": "scope_mismatch"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "missing_project",
+          "agent": "a",
+          "question": "Which report format should this draft use?",
+          "category": "bench_reports",
+          "context": {
+            "workspace": "reports"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "markdown",
+            "must_ask": true,
+            "reason": "missing_scope"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "other_workspace",
+          "agent": "a",
+          "question": "Which report format should this draft use?",
+          "category": "bench_reports",
+          "context": {
+            "project": "atlas",
+            "workspace": "external"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "markdown",
+            "must_ask": true,
+            "reason": "scope_mismatch"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "missing_workspace",
+          "agent": "a",
+          "question": "Which report format should this draft use?",
+          "category": "bench_reports",
+          "context": {
+            "project": "atlas"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "markdown",
+            "must_ask": true,
+            "reason": "missing_scope"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "back_in_scope",
+          "agent": "b",
+          "question": "Which report format should this draft use?",
+          "category": "bench_reports",
+          "context": {
+            "project": "atlas",
+            "workspace": "reports"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "markdown",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        }
+      ]
+    },
+    {
+      "id": "reports.intent_boundaries",
+      "domain": "reports",
+      "family": "intent_boundaries",
+      "rules": [
+        {
+          "id": "main",
+          "category": "bench_reports",
+          "predicate": {
+            "keywords": [
+              "report",
+              "format"
+            ],
+            "example_question": "Which report format should this draft use?",
+            "intent_type": "preference"
+          },
+          "answer": {
+            "value": "markdown"
+          },
+          "scope": {
+            "mandatory": {
+              "project": "atlas",
+              "workspace": "reports"
+            }
+          }
+        }
+      ],
+      "steps": [
+        {
+          "op": "ask",
+          "id": "preference",
+          "agent": "b",
+          "question": "Which report format should this draft use?",
+          "category": "bench_reports",
+          "context": {
+            "project": "atlas",
+            "workspace": "reports"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "markdown",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "permission",
+          "agent": "b",
+          "question": "Which report format should this draft use?",
+          "category": "bench_reports",
+          "context": {
+            "project": "atlas",
+            "workspace": "reports"
+          },
+          "intent_type": "permission",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "markdown",
+            "must_ask": true,
+            "reason": "intent_mismatch"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "disambiguation",
+          "agent": "b",
+          "question": "Which report format should this draft use?",
+          "category": "bench_reports",
+          "context": {
+            "project": "atlas",
+            "workspace": "reports"
+          },
+          "intent_type": "disambiguation",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "markdown",
+            "must_ask": true,
+            "reason": "intent_mismatch"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "unknown_category",
+          "agent": "b",
+          "question": "Which report format should this draft use?",
+          "category": "bench_reports_unseen",
+          "context": {
+            "project": "atlas",
+            "workspace": "reports"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "markdown",
+            "must_ask": true,
+            "reason": "no_saved_rule"
+          }
+        }
+      ]
+    },
+    {
+      "id": "reports.correction_dependencies",
+      "domain": "reports",
+      "family": "correction_dependencies",
+      "rules": [
+        {
+          "id": "main",
+          "category": "bench_reports",
+          "predicate": {
+            "keywords": [
+              "report",
+              "format"
+            ],
+            "example_question": "Which report format should this draft use?",
+            "intent_type": "preference"
+          },
+          "answer": {
+            "value": "markdown"
+          },
+          "scope": {
+            "mandatory": {
+              "project": "atlas",
+              "workspace": "reports"
+            }
+          }
+        },
+        {
+          "id": "other",
+          "category": "bench_reports_other",
+          "predicate": {
+            "keywords": [
+              "report",
+              "format"
+            ],
+            "example_question": "Which report format should this draft use?",
+            "intent_type": "preference"
+          },
+          "answer": {
+            "value": "markdown"
+          },
+          "scope": {
+            "mandatory": {
+              "project": "atlas",
+              "workspace": "reports"
+            }
+          }
+        }
+      ],
+      "steps": [
+        {
+          "op": "ask",
+          "id": "work_pending",
+          "agent": "b",
+          "question": "Which report format should this draft use?",
+          "category": "bench_reports",
+          "context": {
+            "project": "atlas",
+            "workspace": "reports"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "markdown",
+            "must_ask": false,
+            "reason": "saved_preference"
+          },
+          "work": {
+            "id": "pending",
+            "status": "pending"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "work_completed",
+          "agent": "b",
+          "question": "Which report format should this draft use?",
+          "category": "bench_reports",
+          "context": {
+            "project": "atlas",
+            "workspace": "reports"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "markdown",
+            "must_ask": false,
+            "reason": "saved_preference"
+          },
+          "work": {
+            "id": "completed",
+            "status": "completed"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "work_failed",
+          "agent": "a",
+          "question": "Which report format should this draft use?",
+          "category": "bench_reports",
+          "context": {
+            "project": "atlas",
+            "workspace": "reports"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "markdown",
+            "must_ask": false,
+            "reason": "saved_preference"
+          },
+          "work": {
+            "id": "failed",
+            "status": "failed"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "work_unaffected",
+          "agent": "a",
+          "question": "Which report format should this draft use?",
+          "category": "bench_reports",
+          "context": {
+            "project": "atlas",
+            "workspace": "reports"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "markdown",
+            "must_ask": false,
+            "reason": "saved_preference"
+          },
+          "work": {
+            "id": "unaffected",
+            "status": "unaffected"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "work_unknown",
+          "agent": "b",
+          "question": "Which report format should this draft use?",
+          "category": "bench_reports",
+          "context": {
+            "project": "atlas",
+            "workspace": "reports"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "markdown",
+            "must_ask": false,
+            "reason": "saved_preference"
+          },
+          "work": {
+            "id": "unknown",
+            "status": "unknown"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "unrecorded",
+          "agent": "b",
+          "question": "Which report format should this draft use?",
+          "category": "bench_reports",
+          "context": {
+            "project": "atlas",
+            "workspace": "reports"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "markdown",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "unrelated_work",
+          "agent": "b",
+          "question": "Which report format should this draft use?",
+          "category": "bench_reports_other",
+          "context": {
+            "project": "atlas",
+            "workspace": "reports"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "markdown",
+            "must_ask": false,
+            "reason": "saved_preference"
+          },
+          "work": {
+            "id": "unrelated",
+            "status": "pending"
+          }
+        },
+        {
+          "op": "correct",
+          "rule": "main",
+          "answer": {
+            "value": "markdown"
+          },
+          "impact": {
+            "statuses": {
+              "pending": "unaffected",
+              "completed": "unaffected",
+              "failed": "unaffected",
+              "unaffected": "unaffected",
+              "unknown": "unknown_dependency_coverage"
+            },
+            "unknown_receipts": 1
+          }
+        },
+        {
+          "op": "correct",
+          "rule": "main",
+          "answer": {
+            "value": "pdf"
+          },
+          "impact": {
+            "statuses": {
+              "pending": "revalidate",
+              "completed": "review_completed",
+              "failed": "review_failed",
+              "unaffected": "unaffected",
+              "unknown": "unknown_dependency_coverage"
+            },
+            "unknown_receipts": 1
+          }
+        },
+        {
+          "op": "ask",
+          "id": "after_correction",
+          "agent": "b",
+          "question": "Which report format should this draft use?",
+          "category": "bench_reports",
+          "context": {
+            "project": "atlas",
+            "workspace": "reports"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "pdf",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "after_review",
+          "agent": "b",
+          "question": "Which report format should this draft use?",
+          "category": "bench_reports",
+          "context": {
+            "project": "atlas",
+            "workspace": "reports"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "pdf",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        }
+      ]
+    },
+    {
+      "id": "reports.noisy_correction",
+      "domain": "reports",
+      "family": "noisy_correction",
+      "rules": [
+        {
+          "id": "main",
+          "category": "bench_reports",
+          "predicate": {
+            "keywords": [
+              "report",
+              "format"
+            ],
+            "example_question": "Which report format should this draft use?",
+            "intent_type": "preference"
+          },
+          "answer": {
+            "value": "markdown"
+          },
+          "scope": {
+            "mandatory": {
+              "project": "atlas",
+              "workspace": "reports"
+            }
+          }
+        }
+      ],
+      "steps": [
+        {
+          "op": "ask",
+          "id": "before",
+          "agent": "b",
+          "question": "Which report format should this draft use?",
+          "category": "bench_reports",
+          "context": {
+            "project": "atlas",
+            "workspace": "reports"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "markdown",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "correct",
+          "rule": "main",
+          "answer": {
+            "value": "csv"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "wrong_update_1",
+          "agent": "b",
+          "question": "Which report format should this draft use?",
+          "category": "bench_reports",
+          "context": {
+            "project": "atlas",
+            "workspace": "reports"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "pdf",
+            "must_ask": false,
+            "reason": "wrong_correction"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "wrong_update_2",
+          "agent": "b",
+          "question": "Which report format should this draft use?",
+          "category": "bench_reports",
+          "context": {
+            "project": "atlas",
+            "workspace": "reports"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "pdf",
+            "must_ask": false,
+            "reason": "wrong_correction"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "wrong_update_3",
+          "agent": "b",
+          "question": "Which report format should this draft use?",
+          "category": "bench_reports",
+          "context": {
+            "project": "atlas",
+            "workspace": "reports"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "pdf",
+            "must_ask": false,
+            "reason": "wrong_correction"
+          }
+        },
+        {
+          "op": "correct",
+          "rule": "main",
+          "answer": {
+            "value": "pdf"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "repaired",
+          "agent": "b",
+          "question": "Which report format should this draft use?",
+          "category": "bench_reports",
+          "context": {
+            "project": "atlas",
+            "workspace": "reports"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "pdf",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "reused",
+          "agent": "b",
+          "question": "Which report format should this draft use?",
+          "category": "bench_reports",
+          "context": {
+            "project": "atlas",
+            "workspace": "reports"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "pdf",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        }
+      ]
+    },
+    {
+      "id": "reports.hard_locks",
+      "domain": "reports",
+      "family": "hard_locks",
+      "rules": [
+        {
+          "id": "main",
+          "category": "bench_reports",
+          "predicate": {
+            "keywords": [
+              "report",
+              "format"
+            ],
+            "example_question": "Which report format should this draft use?",
+            "intent_type": "preference"
+          },
+          "answer": {
+            "value": "markdown"
+          },
+          "scope": {
+            "mandatory": {
+              "project": "atlas",
+              "workspace": "reports"
+            }
+          }
+        }
+      ],
+      "steps": [
+        {
+          "op": "ask",
+          "id": "ordinary",
+          "agent": "b",
+          "question": "Which report format should this draft use?",
+          "category": "bench_reports",
+          "context": {
+            "project": "atlas",
+            "workspace": "reports"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "markdown",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "money",
+          "agent": "a",
+          "question": "Which report format should this draft use?",
+          "category": "bench_reports",
+          "context": {
+            "project": "atlas",
+            "workspace": "reports",
+            "money_movement": true
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "markdown",
+            "must_ask": true,
+            "reason": "hard_lock"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "delete",
+          "agent": "b",
+          "question": "Which report format should this draft use?",
+          "category": "bench_reports",
+          "context": {
+            "project": "atlas",
+            "workspace": "reports"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "markdown",
+            "must_ask": true,
+            "reason": "hard_lock"
+          },
+          "action": {
+            "type": "delete"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "new_recipient",
+          "agent": "a",
+          "question": "Which report format should this draft use?",
+          "category": "bench_reports",
+          "context": {
+            "project": "atlas",
+            "workspace": "reports",
+            "new_recipient": true
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "markdown",
+            "must_ask": true,
+            "reason": "hard_lock"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "irreversible",
+          "agent": "b",
+          "question": "Which report format should this draft use?",
+          "category": "bench_reports",
+          "context": {
+            "project": "atlas",
+            "workspace": "reports"
+          },
+          "intent_type": "action_review",
+          "reversibility": "irreversible",
+          "expected": {
+            "value": "markdown",
+            "must_ask": true,
+            "reason": "hard_lock"
+          }
+        }
+      ]
+    },
+    {
+      "id": "reports.evidence_integrity",
+      "domain": "reports",
+      "family": "evidence_integrity",
+      "rules": [
+        {
+          "id": "main",
+          "category": "bench_reports",
+          "predicate": {
+            "example_question": "Which report format should this draft use?",
+            "intent_type": "preference"
+          },
+          "answer": {
+            "value": "markdown"
+          },
+          "scope": {
+            "mandatory": {
+              "project": "atlas",
+              "workspace": "reports"
+            }
+          }
+        }
+      ],
+      "steps": [
+        {
+          "op": "ask",
+          "id": "before",
+          "agent": "b",
+          "question": "Which report format should this draft use?",
+          "category": "bench_reports",
+          "context": {
+            "project": "atlas",
+            "workspace": "reports"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "markdown",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "correct",
+          "rule": "main",
+          "answer": {
+            "value": "pdf"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "fresh_1",
+          "agent": "a",
+          "question": "Which report format should this draft use?",
+          "category": "bench_reports",
+          "context": {
+            "project": "atlas",
+            "workspace": "reports"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "pdf",
+            "must_ask": false,
+            "reason": "saved_preference"
+          },
+          "flood": 25
+        },
+        {
+          "op": "ask",
+          "id": "duplicate_context",
+          "agent": "a",
+          "question": "Which report format should this draft use?",
+          "category": "bench_reports",
+          "context": {
+            "project": "atlas",
+            "workspace": "reports"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "pdf",
+            "must_ask": false,
+            "reason": "saved_preference"
+          },
+          "flood": 25
+        },
+        {
+          "op": "ask",
+          "id": "fresh_2",
+          "agent": "a",
+          "question": "Which report format should this draft use?",
+          "category": "bench_reports",
+          "context": {
+            "project": "atlas",
+            "workspace": "reports",
+            "task": "two"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "pdf",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "fresh_3",
+          "agent": "a",
+          "question": "Which report format should this draft use?",
+          "category": "bench_reports",
+          "context": {
+            "project": "atlas",
+            "workspace": "reports",
+            "task": "three"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "pdf",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "resumed",
+          "agent": "b",
+          "question": "Which report format should this draft use?",
+          "category": "bench_reports",
+          "context": {
+            "project": "atlas",
+            "workspace": "reports"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "pdf",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        }
+      ]
+    },
+    {
+      "id": "reports.negative_controls",
+      "domain": "reports",
+      "family": "negative_controls",
+      "rules": [
+        {
+          "id": "main",
+          "category": "bench_reports",
+          "predicate": {
+            "keywords": [
+              "report",
+              "format"
+            ],
+            "example_question": "Which report format should this draft use?",
+            "intent_type": "preference"
+          },
+          "answer": {
+            "value": "markdown"
+          },
+          "scope": {
+            "mandatory": {
+              "workspace": "reports"
+            }
+          }
+        }
+      ],
+      "steps": [
+        {
+          "op": "ask",
+          "id": "baseline",
+          "agent": "b",
+          "question": "Which report format should this draft use?",
+          "category": "bench_reports",
+          "context": {
+            "project": "atlas",
+            "workspace": "reports"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "markdown",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "bad_authored_scope",
+          "agent": "b",
+          "question": "Which report format should this draft use?",
+          "category": "bench_reports",
+          "context": {
+            "project": "boreal",
+            "workspace": "reports"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "markdown",
+            "must_ask": true,
+            "reason": "underspecified_rule_scope"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "silent_change_1",
+          "agent": "a",
+          "question": "Which report format should this draft use?",
+          "category": "bench_reports",
+          "context": {
+            "project": "atlas",
+            "workspace": "reports"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "pdf",
+            "must_ask": false,
+            "reason": "unannounced_preference_change"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "silent_change_2",
+          "agent": "a",
+          "question": "Which report format should this draft use?",
+          "category": "bench_reports",
+          "context": {
+            "project": "atlas",
+            "workspace": "reports"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "pdf",
+            "must_ask": false,
+            "reason": "unannounced_preference_change"
+          }
+        }
+      ]
+    },
+    {
+      "id": "coding.stable_reuse",
+      "domain": "coding",
+      "family": "stable_reuse",
+      "rules": [
+        {
+          "id": "main",
+          "category": "bench_coding",
+          "predicate": {
+            "keywords": [
+              "indent",
+              "style"
+            ],
+            "example_question": "Which indent style should this patch use?",
+            "intent_type": "preference"
+          },
+          "answer": {
+            "value": "spaces"
+          },
+          "scope": {
+            "mandatory": {
+              "project": "atlas",
+              "workspace": "coding"
+            }
+          }
+        }
+      ],
+      "steps": [
+        {
+          "op": "ask",
+          "id": "initial",
+          "agent": "a",
+          "question": "Which indent style should this patch use?",
+          "category": "bench_coding",
+          "context": {
+            "project": "atlas",
+            "workspace": "coding"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "spaces",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "second_agent",
+          "agent": "b",
+          "question": "Which indent style should this patch use?",
+          "category": "bench_coding",
+          "context": {
+            "project": "atlas",
+            "workspace": "coding"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "spaces",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "paraphrase",
+          "agent": "b",
+          "question": "For this task, please choose the indent style.",
+          "category": "bench_coding",
+          "context": {
+            "project": "atlas",
+            "workspace": "coding"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "spaces",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "repeated",
+          "agent": "a",
+          "question": "Which indent style should this patch use?",
+          "category": "bench_coding",
+          "context": {
+            "project": "atlas",
+            "workspace": "coding"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "spaces",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        }
+      ]
+    },
+    {
+      "id": "coding.scope_boundaries",
+      "domain": "coding",
+      "family": "scope_boundaries",
+      "rules": [
+        {
+          "id": "main",
+          "category": "bench_coding",
+          "predicate": {
+            "keywords": [
+              "indent",
+              "style"
+            ],
+            "example_question": "Which indent style should this patch use?",
+            "intent_type": "preference"
+          },
+          "answer": {
+            "value": "spaces"
+          },
+          "scope": {
+            "mandatory": {
+              "project": "atlas",
+              "workspace": "coding"
+            }
+          }
+        }
+      ],
+      "steps": [
+        {
+          "op": "ask",
+          "id": "in_scope",
+          "agent": "b",
+          "question": "Which indent style should this patch use?",
+          "category": "bench_coding",
+          "context": {
+            "project": "atlas",
+            "workspace": "coding"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "spaces",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "other_project",
+          "agent": "a",
+          "question": "Which indent style should this patch use?",
+          "category": "bench_coding",
+          "context": {
+            "project": "boreal",
+            "workspace": "coding"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "spaces",
+            "must_ask": true,
+            "reason": "scope_mismatch"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "missing_project",
+          "agent": "a",
+          "question": "Which indent style should this patch use?",
+          "category": "bench_coding",
+          "context": {
+            "workspace": "coding"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "spaces",
+            "must_ask": true,
+            "reason": "missing_scope"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "other_workspace",
+          "agent": "a",
+          "question": "Which indent style should this patch use?",
+          "category": "bench_coding",
+          "context": {
+            "project": "atlas",
+            "workspace": "external"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "spaces",
+            "must_ask": true,
+            "reason": "scope_mismatch"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "missing_workspace",
+          "agent": "a",
+          "question": "Which indent style should this patch use?",
+          "category": "bench_coding",
+          "context": {
+            "project": "atlas"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "spaces",
+            "must_ask": true,
+            "reason": "missing_scope"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "back_in_scope",
+          "agent": "b",
+          "question": "Which indent style should this patch use?",
+          "category": "bench_coding",
+          "context": {
+            "project": "atlas",
+            "workspace": "coding"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "spaces",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        }
+      ]
+    },
+    {
+      "id": "coding.intent_boundaries",
+      "domain": "coding",
+      "family": "intent_boundaries",
+      "rules": [
+        {
+          "id": "main",
+          "category": "bench_coding",
+          "predicate": {
+            "keywords": [
+              "indent",
+              "style"
+            ],
+            "example_question": "Which indent style should this patch use?",
+            "intent_type": "preference"
+          },
+          "answer": {
+            "value": "spaces"
+          },
+          "scope": {
+            "mandatory": {
+              "project": "atlas",
+              "workspace": "coding"
+            }
+          }
+        }
+      ],
+      "steps": [
+        {
+          "op": "ask",
+          "id": "preference",
+          "agent": "b",
+          "question": "Which indent style should this patch use?",
+          "category": "bench_coding",
+          "context": {
+            "project": "atlas",
+            "workspace": "coding"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "spaces",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "permission",
+          "agent": "b",
+          "question": "Which indent style should this patch use?",
+          "category": "bench_coding",
+          "context": {
+            "project": "atlas",
+            "workspace": "coding"
+          },
+          "intent_type": "permission",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "spaces",
+            "must_ask": true,
+            "reason": "intent_mismatch"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "disambiguation",
+          "agent": "b",
+          "question": "Which indent style should this patch use?",
+          "category": "bench_coding",
+          "context": {
+            "project": "atlas",
+            "workspace": "coding"
+          },
+          "intent_type": "disambiguation",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "spaces",
+            "must_ask": true,
+            "reason": "intent_mismatch"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "unknown_category",
+          "agent": "b",
+          "question": "Which indent style should this patch use?",
+          "category": "bench_coding_unseen",
+          "context": {
+            "project": "atlas",
+            "workspace": "coding"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "spaces",
+            "must_ask": true,
+            "reason": "no_saved_rule"
+          }
+        }
+      ]
+    },
+    {
+      "id": "coding.correction_dependencies",
+      "domain": "coding",
+      "family": "correction_dependencies",
+      "rules": [
+        {
+          "id": "main",
+          "category": "bench_coding",
+          "predicate": {
+            "keywords": [
+              "indent",
+              "style"
+            ],
+            "example_question": "Which indent style should this patch use?",
+            "intent_type": "preference"
+          },
+          "answer": {
+            "value": "spaces"
+          },
+          "scope": {
+            "mandatory": {
+              "project": "atlas",
+              "workspace": "coding"
+            }
+          }
+        },
+        {
+          "id": "other",
+          "category": "bench_coding_other",
+          "predicate": {
+            "keywords": [
+              "indent",
+              "style"
+            ],
+            "example_question": "Which indent style should this patch use?",
+            "intent_type": "preference"
+          },
+          "answer": {
+            "value": "spaces"
+          },
+          "scope": {
+            "mandatory": {
+              "project": "atlas",
+              "workspace": "coding"
+            }
+          }
+        }
+      ],
+      "steps": [
+        {
+          "op": "ask",
+          "id": "work_pending",
+          "agent": "b",
+          "question": "Which indent style should this patch use?",
+          "category": "bench_coding",
+          "context": {
+            "project": "atlas",
+            "workspace": "coding"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "spaces",
+            "must_ask": false,
+            "reason": "saved_preference"
+          },
+          "work": {
+            "id": "pending",
+            "status": "pending"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "work_completed",
+          "agent": "b",
+          "question": "Which indent style should this patch use?",
+          "category": "bench_coding",
+          "context": {
+            "project": "atlas",
+            "workspace": "coding"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "spaces",
+            "must_ask": false,
+            "reason": "saved_preference"
+          },
+          "work": {
+            "id": "completed",
+            "status": "completed"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "work_failed",
+          "agent": "a",
+          "question": "Which indent style should this patch use?",
+          "category": "bench_coding",
+          "context": {
+            "project": "atlas",
+            "workspace": "coding"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "spaces",
+            "must_ask": false,
+            "reason": "saved_preference"
+          },
+          "work": {
+            "id": "failed",
+            "status": "failed"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "work_unaffected",
+          "agent": "a",
+          "question": "Which indent style should this patch use?",
+          "category": "bench_coding",
+          "context": {
+            "project": "atlas",
+            "workspace": "coding"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "spaces",
+            "must_ask": false,
+            "reason": "saved_preference"
+          },
+          "work": {
+            "id": "unaffected",
+            "status": "unaffected"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "work_unknown",
+          "agent": "b",
+          "question": "Which indent style should this patch use?",
+          "category": "bench_coding",
+          "context": {
+            "project": "atlas",
+            "workspace": "coding"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "spaces",
+            "must_ask": false,
+            "reason": "saved_preference"
+          },
+          "work": {
+            "id": "unknown",
+            "status": "unknown"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "unrecorded",
+          "agent": "b",
+          "question": "Which indent style should this patch use?",
+          "category": "bench_coding",
+          "context": {
+            "project": "atlas",
+            "workspace": "coding"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "spaces",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "unrelated_work",
+          "agent": "b",
+          "question": "Which indent style should this patch use?",
+          "category": "bench_coding_other",
+          "context": {
+            "project": "atlas",
+            "workspace": "coding"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "spaces",
+            "must_ask": false,
+            "reason": "saved_preference"
+          },
+          "work": {
+            "id": "unrelated",
+            "status": "pending"
+          }
+        },
+        {
+          "op": "correct",
+          "rule": "main",
+          "answer": {
+            "value": "spaces"
+          },
+          "impact": {
+            "statuses": {
+              "pending": "unaffected",
+              "completed": "unaffected",
+              "failed": "unaffected",
+              "unaffected": "unaffected",
+              "unknown": "unknown_dependency_coverage"
+            },
+            "unknown_receipts": 1
+          }
+        },
+        {
+          "op": "correct",
+          "rule": "main",
+          "answer": {
+            "value": "tabs"
+          },
+          "impact": {
+            "statuses": {
+              "pending": "revalidate",
+              "completed": "review_completed",
+              "failed": "review_failed",
+              "unaffected": "unaffected",
+              "unknown": "unknown_dependency_coverage"
+            },
+            "unknown_receipts": 1
+          }
+        },
+        {
+          "op": "ask",
+          "id": "after_correction",
+          "agent": "b",
+          "question": "Which indent style should this patch use?",
+          "category": "bench_coding",
+          "context": {
+            "project": "atlas",
+            "workspace": "coding"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "tabs",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "after_review",
+          "agent": "b",
+          "question": "Which indent style should this patch use?",
+          "category": "bench_coding",
+          "context": {
+            "project": "atlas",
+            "workspace": "coding"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "tabs",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        }
+      ]
+    },
+    {
+      "id": "coding.noisy_correction",
+      "domain": "coding",
+      "family": "noisy_correction",
+      "rules": [
+        {
+          "id": "main",
+          "category": "bench_coding",
+          "predicate": {
+            "keywords": [
+              "indent",
+              "style"
+            ],
+            "example_question": "Which indent style should this patch use?",
+            "intent_type": "preference"
+          },
+          "answer": {
+            "value": "spaces"
+          },
+          "scope": {
+            "mandatory": {
+              "project": "atlas",
+              "workspace": "coding"
+            }
+          }
+        }
+      ],
+      "steps": [
+        {
+          "op": "ask",
+          "id": "before",
+          "agent": "b",
+          "question": "Which indent style should this patch use?",
+          "category": "bench_coding",
+          "context": {
+            "project": "atlas",
+            "workspace": "coding"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "spaces",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "correct",
+          "rule": "main",
+          "answer": {
+            "value": "mixed"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "wrong_update_1",
+          "agent": "b",
+          "question": "Which indent style should this patch use?",
+          "category": "bench_coding",
+          "context": {
+            "project": "atlas",
+            "workspace": "coding"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "tabs",
+            "must_ask": false,
+            "reason": "wrong_correction"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "wrong_update_2",
+          "agent": "b",
+          "question": "Which indent style should this patch use?",
+          "category": "bench_coding",
+          "context": {
+            "project": "atlas",
+            "workspace": "coding"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "tabs",
+            "must_ask": false,
+            "reason": "wrong_correction"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "wrong_update_3",
+          "agent": "b",
+          "question": "Which indent style should this patch use?",
+          "category": "bench_coding",
+          "context": {
+            "project": "atlas",
+            "workspace": "coding"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "tabs",
+            "must_ask": false,
+            "reason": "wrong_correction"
+          }
+        },
+        {
+          "op": "correct",
+          "rule": "main",
+          "answer": {
+            "value": "tabs"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "repaired",
+          "agent": "b",
+          "question": "Which indent style should this patch use?",
+          "category": "bench_coding",
+          "context": {
+            "project": "atlas",
+            "workspace": "coding"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "tabs",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "reused",
+          "agent": "b",
+          "question": "Which indent style should this patch use?",
+          "category": "bench_coding",
+          "context": {
+            "project": "atlas",
+            "workspace": "coding"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "tabs",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        }
+      ]
+    },
+    {
+      "id": "coding.hard_locks",
+      "domain": "coding",
+      "family": "hard_locks",
+      "rules": [
+        {
+          "id": "main",
+          "category": "bench_coding",
+          "predicate": {
+            "keywords": [
+              "indent",
+              "style"
+            ],
+            "example_question": "Which indent style should this patch use?",
+            "intent_type": "preference"
+          },
+          "answer": {
+            "value": "spaces"
+          },
+          "scope": {
+            "mandatory": {
+              "project": "atlas",
+              "workspace": "coding"
+            }
+          }
+        }
+      ],
+      "steps": [
+        {
+          "op": "ask",
+          "id": "ordinary",
+          "agent": "b",
+          "question": "Which indent style should this patch use?",
+          "category": "bench_coding",
+          "context": {
+            "project": "atlas",
+            "workspace": "coding"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "spaces",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "money",
+          "agent": "a",
+          "question": "Which indent style should this patch use?",
+          "category": "bench_coding",
+          "context": {
+            "project": "atlas",
+            "workspace": "coding",
+            "money_movement": true
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "spaces",
+            "must_ask": true,
+            "reason": "hard_lock"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "delete",
+          "agent": "b",
+          "question": "Which indent style should this patch use?",
+          "category": "bench_coding",
+          "context": {
+            "project": "atlas",
+            "workspace": "coding"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "spaces",
+            "must_ask": true,
+            "reason": "hard_lock"
+          },
+          "action": {
+            "type": "delete"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "new_recipient",
+          "agent": "a",
+          "question": "Which indent style should this patch use?",
+          "category": "bench_coding",
+          "context": {
+            "project": "atlas",
+            "workspace": "coding",
+            "new_recipient": true
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "spaces",
+            "must_ask": true,
+            "reason": "hard_lock"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "irreversible",
+          "agent": "b",
+          "question": "Which indent style should this patch use?",
+          "category": "bench_coding",
+          "context": {
+            "project": "atlas",
+            "workspace": "coding"
+          },
+          "intent_type": "action_review",
+          "reversibility": "irreversible",
+          "expected": {
+            "value": "spaces",
+            "must_ask": true,
+            "reason": "hard_lock"
+          }
+        }
+      ]
+    },
+    {
+      "id": "coding.evidence_integrity",
+      "domain": "coding",
+      "family": "evidence_integrity",
+      "rules": [
+        {
+          "id": "main",
+          "category": "bench_coding",
+          "predicate": {
+            "example_question": "Which indent style should this patch use?",
+            "intent_type": "preference"
+          },
+          "answer": {
+            "value": "spaces"
+          },
+          "scope": {
+            "mandatory": {
+              "project": "atlas",
+              "workspace": "coding"
+            }
+          }
+        }
+      ],
+      "steps": [
+        {
+          "op": "ask",
+          "id": "before",
+          "agent": "b",
+          "question": "Which indent style should this patch use?",
+          "category": "bench_coding",
+          "context": {
+            "project": "atlas",
+            "workspace": "coding"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "spaces",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "correct",
+          "rule": "main",
+          "answer": {
+            "value": "tabs"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "fresh_1",
+          "agent": "a",
+          "question": "Which indent style should this patch use?",
+          "category": "bench_coding",
+          "context": {
+            "project": "atlas",
+            "workspace": "coding"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "tabs",
+            "must_ask": false,
+            "reason": "saved_preference"
+          },
+          "flood": 25
+        },
+        {
+          "op": "ask",
+          "id": "duplicate_context",
+          "agent": "a",
+          "question": "Which indent style should this patch use?",
+          "category": "bench_coding",
+          "context": {
+            "project": "atlas",
+            "workspace": "coding"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "tabs",
+            "must_ask": false,
+            "reason": "saved_preference"
+          },
+          "flood": 25
+        },
+        {
+          "op": "ask",
+          "id": "fresh_2",
+          "agent": "a",
+          "question": "Which indent style should this patch use?",
+          "category": "bench_coding",
+          "context": {
+            "project": "atlas",
+            "workspace": "coding",
+            "task": "two"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "tabs",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "fresh_3",
+          "agent": "a",
+          "question": "Which indent style should this patch use?",
+          "category": "bench_coding",
+          "context": {
+            "project": "atlas",
+            "workspace": "coding",
+            "task": "three"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "tabs",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "resumed",
+          "agent": "b",
+          "question": "Which indent style should this patch use?",
+          "category": "bench_coding",
+          "context": {
+            "project": "atlas",
+            "workspace": "coding"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "tabs",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        }
+      ]
+    },
+    {
+      "id": "coding.negative_controls",
+      "domain": "coding",
+      "family": "negative_controls",
+      "rules": [
+        {
+          "id": "main",
+          "category": "bench_coding",
+          "predicate": {
+            "keywords": [
+              "indent",
+              "style"
+            ],
+            "example_question": "Which indent style should this patch use?",
+            "intent_type": "preference"
+          },
+          "answer": {
+            "value": "spaces"
+          },
+          "scope": {
+            "mandatory": {
+              "workspace": "coding"
+            }
+          }
+        }
+      ],
+      "steps": [
+        {
+          "op": "ask",
+          "id": "baseline",
+          "agent": "b",
+          "question": "Which indent style should this patch use?",
+          "category": "bench_coding",
+          "context": {
+            "project": "atlas",
+            "workspace": "coding"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "spaces",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "bad_authored_scope",
+          "agent": "b",
+          "question": "Which indent style should this patch use?",
+          "category": "bench_coding",
+          "context": {
+            "project": "boreal",
+            "workspace": "coding"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "spaces",
+            "must_ask": true,
+            "reason": "underspecified_rule_scope"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "silent_change_1",
+          "agent": "a",
+          "question": "Which indent style should this patch use?",
+          "category": "bench_coding",
+          "context": {
+            "project": "atlas",
+            "workspace": "coding"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "tabs",
+            "must_ask": false,
+            "reason": "unannounced_preference_change"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "silent_change_2",
+          "agent": "a",
+          "question": "Which indent style should this patch use?",
+          "category": "bench_coding",
+          "context": {
+            "project": "atlas",
+            "workspace": "coding"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "tabs",
+            "must_ask": false,
+            "reason": "unannounced_preference_change"
+          }
+        }
+      ]
+    },
+    {
+      "id": "scheduling.stable_reuse",
+      "domain": "scheduling",
+      "family": "stable_reuse",
+      "rules": [
+        {
+          "id": "main",
+          "category": "bench_scheduling",
+          "predicate": {
+            "keywords": [
+              "meeting",
+              "timezone"
+            ],
+            "example_question": "Which meeting timezone should this plan use?",
+            "intent_type": "preference"
+          },
+          "answer": {
+            "value": "UTC"
+          },
+          "scope": {
+            "mandatory": {
+              "project": "atlas",
+              "workspace": "scheduling"
+            }
+          }
+        }
+      ],
+      "steps": [
+        {
+          "op": "ask",
+          "id": "initial",
+          "agent": "a",
+          "question": "Which meeting timezone should this plan use?",
+          "category": "bench_scheduling",
+          "context": {
+            "project": "atlas",
+            "workspace": "scheduling"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "UTC",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "second_agent",
+          "agent": "b",
+          "question": "Which meeting timezone should this plan use?",
+          "category": "bench_scheduling",
+          "context": {
+            "project": "atlas",
+            "workspace": "scheduling"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "UTC",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "paraphrase",
+          "agent": "b",
+          "question": "For this task, please choose the meeting timezone.",
+          "category": "bench_scheduling",
+          "context": {
+            "project": "atlas",
+            "workspace": "scheduling"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "UTC",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "repeated",
+          "agent": "a",
+          "question": "Which meeting timezone should this plan use?",
+          "category": "bench_scheduling",
+          "context": {
+            "project": "atlas",
+            "workspace": "scheduling"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "UTC",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        }
+      ]
+    },
+    {
+      "id": "scheduling.scope_boundaries",
+      "domain": "scheduling",
+      "family": "scope_boundaries",
+      "rules": [
+        {
+          "id": "main",
+          "category": "bench_scheduling",
+          "predicate": {
+            "keywords": [
+              "meeting",
+              "timezone"
+            ],
+            "example_question": "Which meeting timezone should this plan use?",
+            "intent_type": "preference"
+          },
+          "answer": {
+            "value": "UTC"
+          },
+          "scope": {
+            "mandatory": {
+              "project": "atlas",
+              "workspace": "scheduling"
+            }
+          }
+        }
+      ],
+      "steps": [
+        {
+          "op": "ask",
+          "id": "in_scope",
+          "agent": "b",
+          "question": "Which meeting timezone should this plan use?",
+          "category": "bench_scheduling",
+          "context": {
+            "project": "atlas",
+            "workspace": "scheduling"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "UTC",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "other_project",
+          "agent": "a",
+          "question": "Which meeting timezone should this plan use?",
+          "category": "bench_scheduling",
+          "context": {
+            "project": "boreal",
+            "workspace": "scheduling"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "UTC",
+            "must_ask": true,
+            "reason": "scope_mismatch"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "missing_project",
+          "agent": "a",
+          "question": "Which meeting timezone should this plan use?",
+          "category": "bench_scheduling",
+          "context": {
+            "workspace": "scheduling"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "UTC",
+            "must_ask": true,
+            "reason": "missing_scope"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "other_workspace",
+          "agent": "a",
+          "question": "Which meeting timezone should this plan use?",
+          "category": "bench_scheduling",
+          "context": {
+            "project": "atlas",
+            "workspace": "external"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "UTC",
+            "must_ask": true,
+            "reason": "scope_mismatch"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "missing_workspace",
+          "agent": "a",
+          "question": "Which meeting timezone should this plan use?",
+          "category": "bench_scheduling",
+          "context": {
+            "project": "atlas"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "UTC",
+            "must_ask": true,
+            "reason": "missing_scope"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "back_in_scope",
+          "agent": "b",
+          "question": "Which meeting timezone should this plan use?",
+          "category": "bench_scheduling",
+          "context": {
+            "project": "atlas",
+            "workspace": "scheduling"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "UTC",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        }
+      ]
+    },
+    {
+      "id": "scheduling.intent_boundaries",
+      "domain": "scheduling",
+      "family": "intent_boundaries",
+      "rules": [
+        {
+          "id": "main",
+          "category": "bench_scheduling",
+          "predicate": {
+            "keywords": [
+              "meeting",
+              "timezone"
+            ],
+            "example_question": "Which meeting timezone should this plan use?",
+            "intent_type": "preference"
+          },
+          "answer": {
+            "value": "UTC"
+          },
+          "scope": {
+            "mandatory": {
+              "project": "atlas",
+              "workspace": "scheduling"
+            }
+          }
+        }
+      ],
+      "steps": [
+        {
+          "op": "ask",
+          "id": "preference",
+          "agent": "b",
+          "question": "Which meeting timezone should this plan use?",
+          "category": "bench_scheduling",
+          "context": {
+            "project": "atlas",
+            "workspace": "scheduling"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "UTC",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "permission",
+          "agent": "b",
+          "question": "Which meeting timezone should this plan use?",
+          "category": "bench_scheduling",
+          "context": {
+            "project": "atlas",
+            "workspace": "scheduling"
+          },
+          "intent_type": "permission",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "UTC",
+            "must_ask": true,
+            "reason": "intent_mismatch"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "disambiguation",
+          "agent": "b",
+          "question": "Which meeting timezone should this plan use?",
+          "category": "bench_scheduling",
+          "context": {
+            "project": "atlas",
+            "workspace": "scheduling"
+          },
+          "intent_type": "disambiguation",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "UTC",
+            "must_ask": true,
+            "reason": "intent_mismatch"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "unknown_category",
+          "agent": "b",
+          "question": "Which meeting timezone should this plan use?",
+          "category": "bench_scheduling_unseen",
+          "context": {
+            "project": "atlas",
+            "workspace": "scheduling"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "UTC",
+            "must_ask": true,
+            "reason": "no_saved_rule"
+          }
+        }
+      ]
+    },
+    {
+      "id": "scheduling.correction_dependencies",
+      "domain": "scheduling",
+      "family": "correction_dependencies",
+      "rules": [
+        {
+          "id": "main",
+          "category": "bench_scheduling",
+          "predicate": {
+            "keywords": [
+              "meeting",
+              "timezone"
+            ],
+            "example_question": "Which meeting timezone should this plan use?",
+            "intent_type": "preference"
+          },
+          "answer": {
+            "value": "UTC"
+          },
+          "scope": {
+            "mandatory": {
+              "project": "atlas",
+              "workspace": "scheduling"
+            }
+          }
+        },
+        {
+          "id": "other",
+          "category": "bench_scheduling_other",
+          "predicate": {
+            "keywords": [
+              "meeting",
+              "timezone"
+            ],
+            "example_question": "Which meeting timezone should this plan use?",
+            "intent_type": "preference"
+          },
+          "answer": {
+            "value": "UTC"
+          },
+          "scope": {
+            "mandatory": {
+              "project": "atlas",
+              "workspace": "scheduling"
+            }
+          }
+        }
+      ],
+      "steps": [
+        {
+          "op": "ask",
+          "id": "work_pending",
+          "agent": "b",
+          "question": "Which meeting timezone should this plan use?",
+          "category": "bench_scheduling",
+          "context": {
+            "project": "atlas",
+            "workspace": "scheduling"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "UTC",
+            "must_ask": false,
+            "reason": "saved_preference"
+          },
+          "work": {
+            "id": "pending",
+            "status": "pending"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "work_completed",
+          "agent": "b",
+          "question": "Which meeting timezone should this plan use?",
+          "category": "bench_scheduling",
+          "context": {
+            "project": "atlas",
+            "workspace": "scheduling"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "UTC",
+            "must_ask": false,
+            "reason": "saved_preference"
+          },
+          "work": {
+            "id": "completed",
+            "status": "completed"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "work_failed",
+          "agent": "a",
+          "question": "Which meeting timezone should this plan use?",
+          "category": "bench_scheduling",
+          "context": {
+            "project": "atlas",
+            "workspace": "scheduling"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "UTC",
+            "must_ask": false,
+            "reason": "saved_preference"
+          },
+          "work": {
+            "id": "failed",
+            "status": "failed"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "work_unaffected",
+          "agent": "a",
+          "question": "Which meeting timezone should this plan use?",
+          "category": "bench_scheduling",
+          "context": {
+            "project": "atlas",
+            "workspace": "scheduling"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "UTC",
+            "must_ask": false,
+            "reason": "saved_preference"
+          },
+          "work": {
+            "id": "unaffected",
+            "status": "unaffected"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "work_unknown",
+          "agent": "b",
+          "question": "Which meeting timezone should this plan use?",
+          "category": "bench_scheduling",
+          "context": {
+            "project": "atlas",
+            "workspace": "scheduling"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "UTC",
+            "must_ask": false,
+            "reason": "saved_preference"
+          },
+          "work": {
+            "id": "unknown",
+            "status": "unknown"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "unrecorded",
+          "agent": "b",
+          "question": "Which meeting timezone should this plan use?",
+          "category": "bench_scheduling",
+          "context": {
+            "project": "atlas",
+            "workspace": "scheduling"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "UTC",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "unrelated_work",
+          "agent": "b",
+          "question": "Which meeting timezone should this plan use?",
+          "category": "bench_scheduling_other",
+          "context": {
+            "project": "atlas",
+            "workspace": "scheduling"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "UTC",
+            "must_ask": false,
+            "reason": "saved_preference"
+          },
+          "work": {
+            "id": "unrelated",
+            "status": "pending"
+          }
+        },
+        {
+          "op": "correct",
+          "rule": "main",
+          "answer": {
+            "value": "UTC"
+          },
+          "impact": {
+            "statuses": {
+              "pending": "unaffected",
+              "completed": "unaffected",
+              "failed": "unaffected",
+              "unaffected": "unaffected",
+              "unknown": "unknown_dependency_coverage"
+            },
+            "unknown_receipts": 1
+          }
+        },
+        {
+          "op": "correct",
+          "rule": "main",
+          "answer": {
+            "value": "IST"
+          },
+          "impact": {
+            "statuses": {
+              "pending": "revalidate",
+              "completed": "review_completed",
+              "failed": "review_failed",
+              "unaffected": "unaffected",
+              "unknown": "unknown_dependency_coverage"
+            },
+            "unknown_receipts": 1
+          }
+        },
+        {
+          "op": "ask",
+          "id": "after_correction",
+          "agent": "b",
+          "question": "Which meeting timezone should this plan use?",
+          "category": "bench_scheduling",
+          "context": {
+            "project": "atlas",
+            "workspace": "scheduling"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "IST",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "after_review",
+          "agent": "b",
+          "question": "Which meeting timezone should this plan use?",
+          "category": "bench_scheduling",
+          "context": {
+            "project": "atlas",
+            "workspace": "scheduling"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "IST",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        }
+      ]
+    },
+    {
+      "id": "scheduling.noisy_correction",
+      "domain": "scheduling",
+      "family": "noisy_correction",
+      "rules": [
+        {
+          "id": "main",
+          "category": "bench_scheduling",
+          "predicate": {
+            "keywords": [
+              "meeting",
+              "timezone"
+            ],
+            "example_question": "Which meeting timezone should this plan use?",
+            "intent_type": "preference"
+          },
+          "answer": {
+            "value": "UTC"
+          },
+          "scope": {
+            "mandatory": {
+              "project": "atlas",
+              "workspace": "scheduling"
+            }
+          }
+        }
+      ],
+      "steps": [
+        {
+          "op": "ask",
+          "id": "before",
+          "agent": "b",
+          "question": "Which meeting timezone should this plan use?",
+          "category": "bench_scheduling",
+          "context": {
+            "project": "atlas",
+            "workspace": "scheduling"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "UTC",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "correct",
+          "rule": "main",
+          "answer": {
+            "value": "PST"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "wrong_update_1",
+          "agent": "b",
+          "question": "Which meeting timezone should this plan use?",
+          "category": "bench_scheduling",
+          "context": {
+            "project": "atlas",
+            "workspace": "scheduling"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "IST",
+            "must_ask": false,
+            "reason": "wrong_correction"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "wrong_update_2",
+          "agent": "b",
+          "question": "Which meeting timezone should this plan use?",
+          "category": "bench_scheduling",
+          "context": {
+            "project": "atlas",
+            "workspace": "scheduling"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "IST",
+            "must_ask": false,
+            "reason": "wrong_correction"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "wrong_update_3",
+          "agent": "b",
+          "question": "Which meeting timezone should this plan use?",
+          "category": "bench_scheduling",
+          "context": {
+            "project": "atlas",
+            "workspace": "scheduling"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "IST",
+            "must_ask": false,
+            "reason": "wrong_correction"
+          }
+        },
+        {
+          "op": "correct",
+          "rule": "main",
+          "answer": {
+            "value": "IST"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "repaired",
+          "agent": "b",
+          "question": "Which meeting timezone should this plan use?",
+          "category": "bench_scheduling",
+          "context": {
+            "project": "atlas",
+            "workspace": "scheduling"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "IST",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "reused",
+          "agent": "b",
+          "question": "Which meeting timezone should this plan use?",
+          "category": "bench_scheduling",
+          "context": {
+            "project": "atlas",
+            "workspace": "scheduling"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "IST",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        }
+      ]
+    },
+    {
+      "id": "scheduling.hard_locks",
+      "domain": "scheduling",
+      "family": "hard_locks",
+      "rules": [
+        {
+          "id": "main",
+          "category": "bench_scheduling",
+          "predicate": {
+            "keywords": [
+              "meeting",
+              "timezone"
+            ],
+            "example_question": "Which meeting timezone should this plan use?",
+            "intent_type": "preference"
+          },
+          "answer": {
+            "value": "UTC"
+          },
+          "scope": {
+            "mandatory": {
+              "project": "atlas",
+              "workspace": "scheduling"
+            }
+          }
+        }
+      ],
+      "steps": [
+        {
+          "op": "ask",
+          "id": "ordinary",
+          "agent": "b",
+          "question": "Which meeting timezone should this plan use?",
+          "category": "bench_scheduling",
+          "context": {
+            "project": "atlas",
+            "workspace": "scheduling"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "UTC",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "money",
+          "agent": "a",
+          "question": "Which meeting timezone should this plan use?",
+          "category": "bench_scheduling",
+          "context": {
+            "project": "atlas",
+            "workspace": "scheduling",
+            "money_movement": true
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "UTC",
+            "must_ask": true,
+            "reason": "hard_lock"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "delete",
+          "agent": "b",
+          "question": "Which meeting timezone should this plan use?",
+          "category": "bench_scheduling",
+          "context": {
+            "project": "atlas",
+            "workspace": "scheduling"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "UTC",
+            "must_ask": true,
+            "reason": "hard_lock"
+          },
+          "action": {
+            "type": "delete"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "new_recipient",
+          "agent": "a",
+          "question": "Which meeting timezone should this plan use?",
+          "category": "bench_scheduling",
+          "context": {
+            "project": "atlas",
+            "workspace": "scheduling",
+            "new_recipient": true
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "UTC",
+            "must_ask": true,
+            "reason": "hard_lock"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "irreversible",
+          "agent": "b",
+          "question": "Which meeting timezone should this plan use?",
+          "category": "bench_scheduling",
+          "context": {
+            "project": "atlas",
+            "workspace": "scheduling"
+          },
+          "intent_type": "action_review",
+          "reversibility": "irreversible",
+          "expected": {
+            "value": "UTC",
+            "must_ask": true,
+            "reason": "hard_lock"
+          }
+        }
+      ]
+    },
+    {
+      "id": "scheduling.evidence_integrity",
+      "domain": "scheduling",
+      "family": "evidence_integrity",
+      "rules": [
+        {
+          "id": "main",
+          "category": "bench_scheduling",
+          "predicate": {
+            "example_question": "Which meeting timezone should this plan use?",
+            "intent_type": "preference"
+          },
+          "answer": {
+            "value": "UTC"
+          },
+          "scope": {
+            "mandatory": {
+              "project": "atlas",
+              "workspace": "scheduling"
+            }
+          }
+        }
+      ],
+      "steps": [
+        {
+          "op": "ask",
+          "id": "before",
+          "agent": "b",
+          "question": "Which meeting timezone should this plan use?",
+          "category": "bench_scheduling",
+          "context": {
+            "project": "atlas",
+            "workspace": "scheduling"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "UTC",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "correct",
+          "rule": "main",
+          "answer": {
+            "value": "IST"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "fresh_1",
+          "agent": "a",
+          "question": "Which meeting timezone should this plan use?",
+          "category": "bench_scheduling",
+          "context": {
+            "project": "atlas",
+            "workspace": "scheduling"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "IST",
+            "must_ask": false,
+            "reason": "saved_preference"
+          },
+          "flood": 25
+        },
+        {
+          "op": "ask",
+          "id": "duplicate_context",
+          "agent": "a",
+          "question": "Which meeting timezone should this plan use?",
+          "category": "bench_scheduling",
+          "context": {
+            "project": "atlas",
+            "workspace": "scheduling"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "IST",
+            "must_ask": false,
+            "reason": "saved_preference"
+          },
+          "flood": 25
+        },
+        {
+          "op": "ask",
+          "id": "fresh_2",
+          "agent": "a",
+          "question": "Which meeting timezone should this plan use?",
+          "category": "bench_scheduling",
+          "context": {
+            "project": "atlas",
+            "workspace": "scheduling",
+            "task": "two"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "IST",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "fresh_3",
+          "agent": "a",
+          "question": "Which meeting timezone should this plan use?",
+          "category": "bench_scheduling",
+          "context": {
+            "project": "atlas",
+            "workspace": "scheduling",
+            "task": "three"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "IST",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "resumed",
+          "agent": "b",
+          "question": "Which meeting timezone should this plan use?",
+          "category": "bench_scheduling",
+          "context": {
+            "project": "atlas",
+            "workspace": "scheduling"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "IST",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        }
+      ]
+    },
+    {
+      "id": "scheduling.negative_controls",
+      "domain": "scheduling",
+      "family": "negative_controls",
+      "rules": [
+        {
+          "id": "main",
+          "category": "bench_scheduling",
+          "predicate": {
+            "keywords": [
+              "meeting",
+              "timezone"
+            ],
+            "example_question": "Which meeting timezone should this plan use?",
+            "intent_type": "preference"
+          },
+          "answer": {
+            "value": "UTC"
+          },
+          "scope": {
+            "mandatory": {
+              "workspace": "scheduling"
+            }
+          }
+        }
+      ],
+      "steps": [
+        {
+          "op": "ask",
+          "id": "baseline",
+          "agent": "b",
+          "question": "Which meeting timezone should this plan use?",
+          "category": "bench_scheduling",
+          "context": {
+            "project": "atlas",
+            "workspace": "scheduling"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "UTC",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "bad_authored_scope",
+          "agent": "b",
+          "question": "Which meeting timezone should this plan use?",
+          "category": "bench_scheduling",
+          "context": {
+            "project": "boreal",
+            "workspace": "scheduling"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "UTC",
+            "must_ask": true,
+            "reason": "underspecified_rule_scope"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "silent_change_1",
+          "agent": "a",
+          "question": "Which meeting timezone should this plan use?",
+          "category": "bench_scheduling",
+          "context": {
+            "project": "atlas",
+            "workspace": "scheduling"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "IST",
+            "must_ask": false,
+            "reason": "unannounced_preference_change"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "silent_change_2",
+          "agent": "a",
+          "question": "Which meeting timezone should this plan use?",
+          "category": "bench_scheduling",
+          "context": {
+            "project": "atlas",
+            "workspace": "scheduling"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "IST",
+            "must_ask": false,
+            "reason": "unannounced_preference_change"
+          }
+        }
+      ]
+    },
+    {
+      "id": "writing.stable_reuse",
+      "domain": "writing",
+      "family": "stable_reuse",
+      "rules": [
+        {
+          "id": "main",
+          "category": "bench_writing",
+          "predicate": {
+            "keywords": [
+              "draft",
+              "tone"
+            ],
+            "example_question": "Which draft tone should this summary use?",
+            "intent_type": "preference"
+          },
+          "answer": {
+            "value": "concise"
+          },
+          "scope": {
+            "mandatory": {
+              "project": "atlas",
+              "workspace": "writing"
+            }
+          }
+        }
+      ],
+      "steps": [
+        {
+          "op": "ask",
+          "id": "initial",
+          "agent": "a",
+          "question": "Which draft tone should this summary use?",
+          "category": "bench_writing",
+          "context": {
+            "project": "atlas",
+            "workspace": "writing"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "concise",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "second_agent",
+          "agent": "b",
+          "question": "Which draft tone should this summary use?",
+          "category": "bench_writing",
+          "context": {
+            "project": "atlas",
+            "workspace": "writing"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "concise",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "paraphrase",
+          "agent": "b",
+          "question": "For this task, please choose the draft tone.",
+          "category": "bench_writing",
+          "context": {
+            "project": "atlas",
+            "workspace": "writing"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "concise",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "repeated",
+          "agent": "a",
+          "question": "Which draft tone should this summary use?",
+          "category": "bench_writing",
+          "context": {
+            "project": "atlas",
+            "workspace": "writing"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "concise",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        }
+      ]
+    },
+    {
+      "id": "writing.scope_boundaries",
+      "domain": "writing",
+      "family": "scope_boundaries",
+      "rules": [
+        {
+          "id": "main",
+          "category": "bench_writing",
+          "predicate": {
+            "keywords": [
+              "draft",
+              "tone"
+            ],
+            "example_question": "Which draft tone should this summary use?",
+            "intent_type": "preference"
+          },
+          "answer": {
+            "value": "concise"
+          },
+          "scope": {
+            "mandatory": {
+              "project": "atlas",
+              "workspace": "writing"
+            }
+          }
+        }
+      ],
+      "steps": [
+        {
+          "op": "ask",
+          "id": "in_scope",
+          "agent": "b",
+          "question": "Which draft tone should this summary use?",
+          "category": "bench_writing",
+          "context": {
+            "project": "atlas",
+            "workspace": "writing"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "concise",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "other_project",
+          "agent": "a",
+          "question": "Which draft tone should this summary use?",
+          "category": "bench_writing",
+          "context": {
+            "project": "boreal",
+            "workspace": "writing"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "concise",
+            "must_ask": true,
+            "reason": "scope_mismatch"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "missing_project",
+          "agent": "a",
+          "question": "Which draft tone should this summary use?",
+          "category": "bench_writing",
+          "context": {
+            "workspace": "writing"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "concise",
+            "must_ask": true,
+            "reason": "missing_scope"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "other_workspace",
+          "agent": "a",
+          "question": "Which draft tone should this summary use?",
+          "category": "bench_writing",
+          "context": {
+            "project": "atlas",
+            "workspace": "external"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "concise",
+            "must_ask": true,
+            "reason": "scope_mismatch"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "missing_workspace",
+          "agent": "a",
+          "question": "Which draft tone should this summary use?",
+          "category": "bench_writing",
+          "context": {
+            "project": "atlas"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "concise",
+            "must_ask": true,
+            "reason": "missing_scope"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "back_in_scope",
+          "agent": "b",
+          "question": "Which draft tone should this summary use?",
+          "category": "bench_writing",
+          "context": {
+            "project": "atlas",
+            "workspace": "writing"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "concise",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        }
+      ]
+    },
+    {
+      "id": "writing.intent_boundaries",
+      "domain": "writing",
+      "family": "intent_boundaries",
+      "rules": [
+        {
+          "id": "main",
+          "category": "bench_writing",
+          "predicate": {
+            "keywords": [
+              "draft",
+              "tone"
+            ],
+            "example_question": "Which draft tone should this summary use?",
+            "intent_type": "preference"
+          },
+          "answer": {
+            "value": "concise"
+          },
+          "scope": {
+            "mandatory": {
+              "project": "atlas",
+              "workspace": "writing"
+            }
+          }
+        }
+      ],
+      "steps": [
+        {
+          "op": "ask",
+          "id": "preference",
+          "agent": "b",
+          "question": "Which draft tone should this summary use?",
+          "category": "bench_writing",
+          "context": {
+            "project": "atlas",
+            "workspace": "writing"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "concise",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "permission",
+          "agent": "b",
+          "question": "Which draft tone should this summary use?",
+          "category": "bench_writing",
+          "context": {
+            "project": "atlas",
+            "workspace": "writing"
+          },
+          "intent_type": "permission",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "concise",
+            "must_ask": true,
+            "reason": "intent_mismatch"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "disambiguation",
+          "agent": "b",
+          "question": "Which draft tone should this summary use?",
+          "category": "bench_writing",
+          "context": {
+            "project": "atlas",
+            "workspace": "writing"
+          },
+          "intent_type": "disambiguation",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "concise",
+            "must_ask": true,
+            "reason": "intent_mismatch"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "unknown_category",
+          "agent": "b",
+          "question": "Which draft tone should this summary use?",
+          "category": "bench_writing_unseen",
+          "context": {
+            "project": "atlas",
+            "workspace": "writing"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "concise",
+            "must_ask": true,
+            "reason": "no_saved_rule"
+          }
+        }
+      ]
+    },
+    {
+      "id": "writing.correction_dependencies",
+      "domain": "writing",
+      "family": "correction_dependencies",
+      "rules": [
+        {
+          "id": "main",
+          "category": "bench_writing",
+          "predicate": {
+            "keywords": [
+              "draft",
+              "tone"
+            ],
+            "example_question": "Which draft tone should this summary use?",
+            "intent_type": "preference"
+          },
+          "answer": {
+            "value": "concise"
+          },
+          "scope": {
+            "mandatory": {
+              "project": "atlas",
+              "workspace": "writing"
+            }
+          }
+        },
+        {
+          "id": "other",
+          "category": "bench_writing_other",
+          "predicate": {
+            "keywords": [
+              "draft",
+              "tone"
+            ],
+            "example_question": "Which draft tone should this summary use?",
+            "intent_type": "preference"
+          },
+          "answer": {
+            "value": "concise"
+          },
+          "scope": {
+            "mandatory": {
+              "project": "atlas",
+              "workspace": "writing"
+            }
+          }
+        }
+      ],
+      "steps": [
+        {
+          "op": "ask",
+          "id": "work_pending",
+          "agent": "b",
+          "question": "Which draft tone should this summary use?",
+          "category": "bench_writing",
+          "context": {
+            "project": "atlas",
+            "workspace": "writing"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "concise",
+            "must_ask": false,
+            "reason": "saved_preference"
+          },
+          "work": {
+            "id": "pending",
+            "status": "pending"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "work_completed",
+          "agent": "b",
+          "question": "Which draft tone should this summary use?",
+          "category": "bench_writing",
+          "context": {
+            "project": "atlas",
+            "workspace": "writing"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "concise",
+            "must_ask": false,
+            "reason": "saved_preference"
+          },
+          "work": {
+            "id": "completed",
+            "status": "completed"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "work_failed",
+          "agent": "a",
+          "question": "Which draft tone should this summary use?",
+          "category": "bench_writing",
+          "context": {
+            "project": "atlas",
+            "workspace": "writing"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "concise",
+            "must_ask": false,
+            "reason": "saved_preference"
+          },
+          "work": {
+            "id": "failed",
+            "status": "failed"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "work_unaffected",
+          "agent": "a",
+          "question": "Which draft tone should this summary use?",
+          "category": "bench_writing",
+          "context": {
+            "project": "atlas",
+            "workspace": "writing"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "concise",
+            "must_ask": false,
+            "reason": "saved_preference"
+          },
+          "work": {
+            "id": "unaffected",
+            "status": "unaffected"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "work_unknown",
+          "agent": "b",
+          "question": "Which draft tone should this summary use?",
+          "category": "bench_writing",
+          "context": {
+            "project": "atlas",
+            "workspace": "writing"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "concise",
+            "must_ask": false,
+            "reason": "saved_preference"
+          },
+          "work": {
+            "id": "unknown",
+            "status": "unknown"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "unrecorded",
+          "agent": "b",
+          "question": "Which draft tone should this summary use?",
+          "category": "bench_writing",
+          "context": {
+            "project": "atlas",
+            "workspace": "writing"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "concise",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "unrelated_work",
+          "agent": "b",
+          "question": "Which draft tone should this summary use?",
+          "category": "bench_writing_other",
+          "context": {
+            "project": "atlas",
+            "workspace": "writing"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "concise",
+            "must_ask": false,
+            "reason": "saved_preference"
+          },
+          "work": {
+            "id": "unrelated",
+            "status": "pending"
+          }
+        },
+        {
+          "op": "correct",
+          "rule": "main",
+          "answer": {
+            "value": "concise"
+          },
+          "impact": {
+            "statuses": {
+              "pending": "unaffected",
+              "completed": "unaffected",
+              "failed": "unaffected",
+              "unaffected": "unaffected",
+              "unknown": "unknown_dependency_coverage"
+            },
+            "unknown_receipts": 1
+          }
+        },
+        {
+          "op": "correct",
+          "rule": "main",
+          "answer": {
+            "value": "friendly"
+          },
+          "impact": {
+            "statuses": {
+              "pending": "revalidate",
+              "completed": "review_completed",
+              "failed": "review_failed",
+              "unaffected": "unaffected",
+              "unknown": "unknown_dependency_coverage"
+            },
+            "unknown_receipts": 1
+          }
+        },
+        {
+          "op": "ask",
+          "id": "after_correction",
+          "agent": "b",
+          "question": "Which draft tone should this summary use?",
+          "category": "bench_writing",
+          "context": {
+            "project": "atlas",
+            "workspace": "writing"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "friendly",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "after_review",
+          "agent": "b",
+          "question": "Which draft tone should this summary use?",
+          "category": "bench_writing",
+          "context": {
+            "project": "atlas",
+            "workspace": "writing"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "friendly",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        }
+      ]
+    },
+    {
+      "id": "writing.noisy_correction",
+      "domain": "writing",
+      "family": "noisy_correction",
+      "rules": [
+        {
+          "id": "main",
+          "category": "bench_writing",
+          "predicate": {
+            "keywords": [
+              "draft",
+              "tone"
+            ],
+            "example_question": "Which draft tone should this summary use?",
+            "intent_type": "preference"
+          },
+          "answer": {
+            "value": "concise"
+          },
+          "scope": {
+            "mandatory": {
+              "project": "atlas",
+              "workspace": "writing"
+            }
+          }
+        }
+      ],
+      "steps": [
+        {
+          "op": "ask",
+          "id": "before",
+          "agent": "b",
+          "question": "Which draft tone should this summary use?",
+          "category": "bench_writing",
+          "context": {
+            "project": "atlas",
+            "workspace": "writing"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "concise",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "correct",
+          "rule": "main",
+          "answer": {
+            "value": "formal"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "wrong_update_1",
+          "agent": "b",
+          "question": "Which draft tone should this summary use?",
+          "category": "bench_writing",
+          "context": {
+            "project": "atlas",
+            "workspace": "writing"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "friendly",
+            "must_ask": false,
+            "reason": "wrong_correction"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "wrong_update_2",
+          "agent": "b",
+          "question": "Which draft tone should this summary use?",
+          "category": "bench_writing",
+          "context": {
+            "project": "atlas",
+            "workspace": "writing"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "friendly",
+            "must_ask": false,
+            "reason": "wrong_correction"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "wrong_update_3",
+          "agent": "b",
+          "question": "Which draft tone should this summary use?",
+          "category": "bench_writing",
+          "context": {
+            "project": "atlas",
+            "workspace": "writing"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "friendly",
+            "must_ask": false,
+            "reason": "wrong_correction"
+          }
+        },
+        {
+          "op": "correct",
+          "rule": "main",
+          "answer": {
+            "value": "friendly"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "repaired",
+          "agent": "b",
+          "question": "Which draft tone should this summary use?",
+          "category": "bench_writing",
+          "context": {
+            "project": "atlas",
+            "workspace": "writing"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "friendly",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "reused",
+          "agent": "b",
+          "question": "Which draft tone should this summary use?",
+          "category": "bench_writing",
+          "context": {
+            "project": "atlas",
+            "workspace": "writing"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "friendly",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        }
+      ]
+    },
+    {
+      "id": "writing.hard_locks",
+      "domain": "writing",
+      "family": "hard_locks",
+      "rules": [
+        {
+          "id": "main",
+          "category": "bench_writing",
+          "predicate": {
+            "keywords": [
+              "draft",
+              "tone"
+            ],
+            "example_question": "Which draft tone should this summary use?",
+            "intent_type": "preference"
+          },
+          "answer": {
+            "value": "concise"
+          },
+          "scope": {
+            "mandatory": {
+              "project": "atlas",
+              "workspace": "writing"
+            }
+          }
+        }
+      ],
+      "steps": [
+        {
+          "op": "ask",
+          "id": "ordinary",
+          "agent": "b",
+          "question": "Which draft tone should this summary use?",
+          "category": "bench_writing",
+          "context": {
+            "project": "atlas",
+            "workspace": "writing"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "concise",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "money",
+          "agent": "a",
+          "question": "Which draft tone should this summary use?",
+          "category": "bench_writing",
+          "context": {
+            "project": "atlas",
+            "workspace": "writing",
+            "money_movement": true
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "concise",
+            "must_ask": true,
+            "reason": "hard_lock"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "delete",
+          "agent": "b",
+          "question": "Which draft tone should this summary use?",
+          "category": "bench_writing",
+          "context": {
+            "project": "atlas",
+            "workspace": "writing"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "concise",
+            "must_ask": true,
+            "reason": "hard_lock"
+          },
+          "action": {
+            "type": "delete"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "new_recipient",
+          "agent": "a",
+          "question": "Which draft tone should this summary use?",
+          "category": "bench_writing",
+          "context": {
+            "project": "atlas",
+            "workspace": "writing",
+            "new_recipient": true
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "concise",
+            "must_ask": true,
+            "reason": "hard_lock"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "irreversible",
+          "agent": "b",
+          "question": "Which draft tone should this summary use?",
+          "category": "bench_writing",
+          "context": {
+            "project": "atlas",
+            "workspace": "writing"
+          },
+          "intent_type": "action_review",
+          "reversibility": "irreversible",
+          "expected": {
+            "value": "concise",
+            "must_ask": true,
+            "reason": "hard_lock"
+          }
+        }
+      ]
+    },
+    {
+      "id": "writing.evidence_integrity",
+      "domain": "writing",
+      "family": "evidence_integrity",
+      "rules": [
+        {
+          "id": "main",
+          "category": "bench_writing",
+          "predicate": {
+            "example_question": "Which draft tone should this summary use?",
+            "intent_type": "preference"
+          },
+          "answer": {
+            "value": "concise"
+          },
+          "scope": {
+            "mandatory": {
+              "project": "atlas",
+              "workspace": "writing"
+            }
+          }
+        }
+      ],
+      "steps": [
+        {
+          "op": "ask",
+          "id": "before",
+          "agent": "b",
+          "question": "Which draft tone should this summary use?",
+          "category": "bench_writing",
+          "context": {
+            "project": "atlas",
+            "workspace": "writing"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "concise",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "correct",
+          "rule": "main",
+          "answer": {
+            "value": "friendly"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "fresh_1",
+          "agent": "a",
+          "question": "Which draft tone should this summary use?",
+          "category": "bench_writing",
+          "context": {
+            "project": "atlas",
+            "workspace": "writing"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "friendly",
+            "must_ask": false,
+            "reason": "saved_preference"
+          },
+          "flood": 25
+        },
+        {
+          "op": "ask",
+          "id": "duplicate_context",
+          "agent": "a",
+          "question": "Which draft tone should this summary use?",
+          "category": "bench_writing",
+          "context": {
+            "project": "atlas",
+            "workspace": "writing"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "friendly",
+            "must_ask": false,
+            "reason": "saved_preference"
+          },
+          "flood": 25
+        },
+        {
+          "op": "ask",
+          "id": "fresh_2",
+          "agent": "a",
+          "question": "Which draft tone should this summary use?",
+          "category": "bench_writing",
+          "context": {
+            "project": "atlas",
+            "workspace": "writing",
+            "task": "two"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "friendly",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "fresh_3",
+          "agent": "a",
+          "question": "Which draft tone should this summary use?",
+          "category": "bench_writing",
+          "context": {
+            "project": "atlas",
+            "workspace": "writing",
+            "task": "three"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "friendly",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "resumed",
+          "agent": "b",
+          "question": "Which draft tone should this summary use?",
+          "category": "bench_writing",
+          "context": {
+            "project": "atlas",
+            "workspace": "writing"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "friendly",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        }
+      ]
+    },
+    {
+      "id": "writing.negative_controls",
+      "domain": "writing",
+      "family": "negative_controls",
+      "rules": [
+        {
+          "id": "main",
+          "category": "bench_writing",
+          "predicate": {
+            "keywords": [
+              "draft",
+              "tone"
+            ],
+            "example_question": "Which draft tone should this summary use?",
+            "intent_type": "preference"
+          },
+          "answer": {
+            "value": "concise"
+          },
+          "scope": {
+            "mandatory": {
+              "workspace": "writing"
+            }
+          }
+        }
+      ],
+      "steps": [
+        {
+          "op": "ask",
+          "id": "baseline",
+          "agent": "b",
+          "question": "Which draft tone should this summary use?",
+          "category": "bench_writing",
+          "context": {
+            "project": "atlas",
+            "workspace": "writing"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "concise",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "bad_authored_scope",
+          "agent": "b",
+          "question": "Which draft tone should this summary use?",
+          "category": "bench_writing",
+          "context": {
+            "project": "boreal",
+            "workspace": "writing"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "concise",
+            "must_ask": true,
+            "reason": "underspecified_rule_scope"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "silent_change_1",
+          "agent": "a",
+          "question": "Which draft tone should this summary use?",
+          "category": "bench_writing",
+          "context": {
+            "project": "atlas",
+            "workspace": "writing"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "friendly",
+            "must_ask": false,
+            "reason": "unannounced_preference_change"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "silent_change_2",
+          "agent": "a",
+          "question": "Which draft tone should this summary use?",
+          "category": "bench_writing",
+          "context": {
+            "project": "atlas",
+            "workspace": "writing"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "friendly",
+            "must_ask": false,
+            "reason": "unannounced_preference_change"
+          }
+        }
+      ]
+    },
+    {
+      "id": "charts.stable_reuse",
+      "domain": "charts",
+      "family": "stable_reuse",
+      "rules": [
+        {
+          "id": "main",
+          "category": "bench_charts",
+          "predicate": {
+            "keywords": [
+              "chart",
+              "units"
+            ],
+            "example_question": "Which chart units should this preview use?",
+            "intent_type": "preference"
+          },
+          "answer": {
+            "value": "metric"
+          },
+          "scope": {
+            "mandatory": {
+              "project": "atlas",
+              "workspace": "charts"
+            }
+          }
+        }
+      ],
+      "steps": [
+        {
+          "op": "ask",
+          "id": "initial",
+          "agent": "a",
+          "question": "Which chart units should this preview use?",
+          "category": "bench_charts",
+          "context": {
+            "project": "atlas",
+            "workspace": "charts"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "metric",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "second_agent",
+          "agent": "b",
+          "question": "Which chart units should this preview use?",
+          "category": "bench_charts",
+          "context": {
+            "project": "atlas",
+            "workspace": "charts"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "metric",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "paraphrase",
+          "agent": "b",
+          "question": "For this task, please choose the chart units.",
+          "category": "bench_charts",
+          "context": {
+            "project": "atlas",
+            "workspace": "charts"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "metric",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "repeated",
+          "agent": "a",
+          "question": "Which chart units should this preview use?",
+          "category": "bench_charts",
+          "context": {
+            "project": "atlas",
+            "workspace": "charts"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "metric",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        }
+      ]
+    },
+    {
+      "id": "charts.scope_boundaries",
+      "domain": "charts",
+      "family": "scope_boundaries",
+      "rules": [
+        {
+          "id": "main",
+          "category": "bench_charts",
+          "predicate": {
+            "keywords": [
+              "chart",
+              "units"
+            ],
+            "example_question": "Which chart units should this preview use?",
+            "intent_type": "preference"
+          },
+          "answer": {
+            "value": "metric"
+          },
+          "scope": {
+            "mandatory": {
+              "project": "atlas",
+              "workspace": "charts"
+            }
+          }
+        }
+      ],
+      "steps": [
+        {
+          "op": "ask",
+          "id": "in_scope",
+          "agent": "b",
+          "question": "Which chart units should this preview use?",
+          "category": "bench_charts",
+          "context": {
+            "project": "atlas",
+            "workspace": "charts"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "metric",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "other_project",
+          "agent": "a",
+          "question": "Which chart units should this preview use?",
+          "category": "bench_charts",
+          "context": {
+            "project": "boreal",
+            "workspace": "charts"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "metric",
+            "must_ask": true,
+            "reason": "scope_mismatch"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "missing_project",
+          "agent": "a",
+          "question": "Which chart units should this preview use?",
+          "category": "bench_charts",
+          "context": {
+            "workspace": "charts"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "metric",
+            "must_ask": true,
+            "reason": "missing_scope"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "other_workspace",
+          "agent": "a",
+          "question": "Which chart units should this preview use?",
+          "category": "bench_charts",
+          "context": {
+            "project": "atlas",
+            "workspace": "external"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "metric",
+            "must_ask": true,
+            "reason": "scope_mismatch"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "missing_workspace",
+          "agent": "a",
+          "question": "Which chart units should this preview use?",
+          "category": "bench_charts",
+          "context": {
+            "project": "atlas"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "metric",
+            "must_ask": true,
+            "reason": "missing_scope"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "back_in_scope",
+          "agent": "b",
+          "question": "Which chart units should this preview use?",
+          "category": "bench_charts",
+          "context": {
+            "project": "atlas",
+            "workspace": "charts"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "metric",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        }
+      ]
+    },
+    {
+      "id": "charts.intent_boundaries",
+      "domain": "charts",
+      "family": "intent_boundaries",
+      "rules": [
+        {
+          "id": "main",
+          "category": "bench_charts",
+          "predicate": {
+            "keywords": [
+              "chart",
+              "units"
+            ],
+            "example_question": "Which chart units should this preview use?",
+            "intent_type": "preference"
+          },
+          "answer": {
+            "value": "metric"
+          },
+          "scope": {
+            "mandatory": {
+              "project": "atlas",
+              "workspace": "charts"
+            }
+          }
+        }
+      ],
+      "steps": [
+        {
+          "op": "ask",
+          "id": "preference",
+          "agent": "b",
+          "question": "Which chart units should this preview use?",
+          "category": "bench_charts",
+          "context": {
+            "project": "atlas",
+            "workspace": "charts"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "metric",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "permission",
+          "agent": "b",
+          "question": "Which chart units should this preview use?",
+          "category": "bench_charts",
+          "context": {
+            "project": "atlas",
+            "workspace": "charts"
+          },
+          "intent_type": "permission",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "metric",
+            "must_ask": true,
+            "reason": "intent_mismatch"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "disambiguation",
+          "agent": "b",
+          "question": "Which chart units should this preview use?",
+          "category": "bench_charts",
+          "context": {
+            "project": "atlas",
+            "workspace": "charts"
+          },
+          "intent_type": "disambiguation",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "metric",
+            "must_ask": true,
+            "reason": "intent_mismatch"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "unknown_category",
+          "agent": "b",
+          "question": "Which chart units should this preview use?",
+          "category": "bench_charts_unseen",
+          "context": {
+            "project": "atlas",
+            "workspace": "charts"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "metric",
+            "must_ask": true,
+            "reason": "no_saved_rule"
+          }
+        }
+      ]
+    },
+    {
+      "id": "charts.correction_dependencies",
+      "domain": "charts",
+      "family": "correction_dependencies",
+      "rules": [
+        {
+          "id": "main",
+          "category": "bench_charts",
+          "predicate": {
+            "keywords": [
+              "chart",
+              "units"
+            ],
+            "example_question": "Which chart units should this preview use?",
+            "intent_type": "preference"
+          },
+          "answer": {
+            "value": "metric"
+          },
+          "scope": {
+            "mandatory": {
+              "project": "atlas",
+              "workspace": "charts"
+            }
+          }
+        },
+        {
+          "id": "other",
+          "category": "bench_charts_other",
+          "predicate": {
+            "keywords": [
+              "chart",
+              "units"
+            ],
+            "example_question": "Which chart units should this preview use?",
+            "intent_type": "preference"
+          },
+          "answer": {
+            "value": "metric"
+          },
+          "scope": {
+            "mandatory": {
+              "project": "atlas",
+              "workspace": "charts"
+            }
+          }
+        }
+      ],
+      "steps": [
+        {
+          "op": "ask",
+          "id": "work_pending",
+          "agent": "b",
+          "question": "Which chart units should this preview use?",
+          "category": "bench_charts",
+          "context": {
+            "project": "atlas",
+            "workspace": "charts"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "metric",
+            "must_ask": false,
+            "reason": "saved_preference"
+          },
+          "work": {
+            "id": "pending",
+            "status": "pending"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "work_completed",
+          "agent": "b",
+          "question": "Which chart units should this preview use?",
+          "category": "bench_charts",
+          "context": {
+            "project": "atlas",
+            "workspace": "charts"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "metric",
+            "must_ask": false,
+            "reason": "saved_preference"
+          },
+          "work": {
+            "id": "completed",
+            "status": "completed"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "work_failed",
+          "agent": "a",
+          "question": "Which chart units should this preview use?",
+          "category": "bench_charts",
+          "context": {
+            "project": "atlas",
+            "workspace": "charts"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "metric",
+            "must_ask": false,
+            "reason": "saved_preference"
+          },
+          "work": {
+            "id": "failed",
+            "status": "failed"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "work_unaffected",
+          "agent": "a",
+          "question": "Which chart units should this preview use?",
+          "category": "bench_charts",
+          "context": {
+            "project": "atlas",
+            "workspace": "charts"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "metric",
+            "must_ask": false,
+            "reason": "saved_preference"
+          },
+          "work": {
+            "id": "unaffected",
+            "status": "unaffected"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "work_unknown",
+          "agent": "b",
+          "question": "Which chart units should this preview use?",
+          "category": "bench_charts",
+          "context": {
+            "project": "atlas",
+            "workspace": "charts"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "metric",
+            "must_ask": false,
+            "reason": "saved_preference"
+          },
+          "work": {
+            "id": "unknown",
+            "status": "unknown"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "unrecorded",
+          "agent": "b",
+          "question": "Which chart units should this preview use?",
+          "category": "bench_charts",
+          "context": {
+            "project": "atlas",
+            "workspace": "charts"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "metric",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "unrelated_work",
+          "agent": "b",
+          "question": "Which chart units should this preview use?",
+          "category": "bench_charts_other",
+          "context": {
+            "project": "atlas",
+            "workspace": "charts"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "metric",
+            "must_ask": false,
+            "reason": "saved_preference"
+          },
+          "work": {
+            "id": "unrelated",
+            "status": "pending"
+          }
+        },
+        {
+          "op": "correct",
+          "rule": "main",
+          "answer": {
+            "value": "metric"
+          },
+          "impact": {
+            "statuses": {
+              "pending": "unaffected",
+              "completed": "unaffected",
+              "failed": "unaffected",
+              "unaffected": "unaffected",
+              "unknown": "unknown_dependency_coverage"
+            },
+            "unknown_receipts": 1
+          }
+        },
+        {
+          "op": "correct",
+          "rule": "main",
+          "answer": {
+            "value": "imperial"
+          },
+          "impact": {
+            "statuses": {
+              "pending": "revalidate",
+              "completed": "review_completed",
+              "failed": "review_failed",
+              "unaffected": "unaffected",
+              "unknown": "unknown_dependency_coverage"
+            },
+            "unknown_receipts": 1
+          }
+        },
+        {
+          "op": "ask",
+          "id": "after_correction",
+          "agent": "b",
+          "question": "Which chart units should this preview use?",
+          "category": "bench_charts",
+          "context": {
+            "project": "atlas",
+            "workspace": "charts"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "imperial",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "after_review",
+          "agent": "b",
+          "question": "Which chart units should this preview use?",
+          "category": "bench_charts",
+          "context": {
+            "project": "atlas",
+            "workspace": "charts"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "imperial",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        }
+      ]
+    },
+    {
+      "id": "charts.noisy_correction",
+      "domain": "charts",
+      "family": "noisy_correction",
+      "rules": [
+        {
+          "id": "main",
+          "category": "bench_charts",
+          "predicate": {
+            "keywords": [
+              "chart",
+              "units"
+            ],
+            "example_question": "Which chart units should this preview use?",
+            "intent_type": "preference"
+          },
+          "answer": {
+            "value": "metric"
+          },
+          "scope": {
+            "mandatory": {
+              "project": "atlas",
+              "workspace": "charts"
+            }
+          }
+        }
+      ],
+      "steps": [
+        {
+          "op": "ask",
+          "id": "before",
+          "agent": "b",
+          "question": "Which chart units should this preview use?",
+          "category": "bench_charts",
+          "context": {
+            "project": "atlas",
+            "workspace": "charts"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "metric",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "correct",
+          "rule": "main",
+          "answer": {
+            "value": "native"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "wrong_update_1",
+          "agent": "b",
+          "question": "Which chart units should this preview use?",
+          "category": "bench_charts",
+          "context": {
+            "project": "atlas",
+            "workspace": "charts"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "imperial",
+            "must_ask": false,
+            "reason": "wrong_correction"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "wrong_update_2",
+          "agent": "b",
+          "question": "Which chart units should this preview use?",
+          "category": "bench_charts",
+          "context": {
+            "project": "atlas",
+            "workspace": "charts"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "imperial",
+            "must_ask": false,
+            "reason": "wrong_correction"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "wrong_update_3",
+          "agent": "b",
+          "question": "Which chart units should this preview use?",
+          "category": "bench_charts",
+          "context": {
+            "project": "atlas",
+            "workspace": "charts"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "imperial",
+            "must_ask": false,
+            "reason": "wrong_correction"
+          }
+        },
+        {
+          "op": "correct",
+          "rule": "main",
+          "answer": {
+            "value": "imperial"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "repaired",
+          "agent": "b",
+          "question": "Which chart units should this preview use?",
+          "category": "bench_charts",
+          "context": {
+            "project": "atlas",
+            "workspace": "charts"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "imperial",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "reused",
+          "agent": "b",
+          "question": "Which chart units should this preview use?",
+          "category": "bench_charts",
+          "context": {
+            "project": "atlas",
+            "workspace": "charts"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "imperial",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        }
+      ]
+    },
+    {
+      "id": "charts.hard_locks",
+      "domain": "charts",
+      "family": "hard_locks",
+      "rules": [
+        {
+          "id": "main",
+          "category": "bench_charts",
+          "predicate": {
+            "keywords": [
+              "chart",
+              "units"
+            ],
+            "example_question": "Which chart units should this preview use?",
+            "intent_type": "preference"
+          },
+          "answer": {
+            "value": "metric"
+          },
+          "scope": {
+            "mandatory": {
+              "project": "atlas",
+              "workspace": "charts"
+            }
+          }
+        }
+      ],
+      "steps": [
+        {
+          "op": "ask",
+          "id": "ordinary",
+          "agent": "b",
+          "question": "Which chart units should this preview use?",
+          "category": "bench_charts",
+          "context": {
+            "project": "atlas",
+            "workspace": "charts"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "metric",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "money",
+          "agent": "a",
+          "question": "Which chart units should this preview use?",
+          "category": "bench_charts",
+          "context": {
+            "project": "atlas",
+            "workspace": "charts",
+            "money_movement": true
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "metric",
+            "must_ask": true,
+            "reason": "hard_lock"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "delete",
+          "agent": "b",
+          "question": "Which chart units should this preview use?",
+          "category": "bench_charts",
+          "context": {
+            "project": "atlas",
+            "workspace": "charts"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "metric",
+            "must_ask": true,
+            "reason": "hard_lock"
+          },
+          "action": {
+            "type": "delete"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "new_recipient",
+          "agent": "a",
+          "question": "Which chart units should this preview use?",
+          "category": "bench_charts",
+          "context": {
+            "project": "atlas",
+            "workspace": "charts",
+            "new_recipient": true
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "metric",
+            "must_ask": true,
+            "reason": "hard_lock"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "irreversible",
+          "agent": "b",
+          "question": "Which chart units should this preview use?",
+          "category": "bench_charts",
+          "context": {
+            "project": "atlas",
+            "workspace": "charts"
+          },
+          "intent_type": "action_review",
+          "reversibility": "irreversible",
+          "expected": {
+            "value": "metric",
+            "must_ask": true,
+            "reason": "hard_lock"
+          }
+        }
+      ]
+    },
+    {
+      "id": "charts.evidence_integrity",
+      "domain": "charts",
+      "family": "evidence_integrity",
+      "rules": [
+        {
+          "id": "main",
+          "category": "bench_charts",
+          "predicate": {
+            "example_question": "Which chart units should this preview use?",
+            "intent_type": "preference"
+          },
+          "answer": {
+            "value": "metric"
+          },
+          "scope": {
+            "mandatory": {
+              "project": "atlas",
+              "workspace": "charts"
+            }
+          }
+        }
+      ],
+      "steps": [
+        {
+          "op": "ask",
+          "id": "before",
+          "agent": "b",
+          "question": "Which chart units should this preview use?",
+          "category": "bench_charts",
+          "context": {
+            "project": "atlas",
+            "workspace": "charts"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "metric",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "correct",
+          "rule": "main",
+          "answer": {
+            "value": "imperial"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "fresh_1",
+          "agent": "a",
+          "question": "Which chart units should this preview use?",
+          "category": "bench_charts",
+          "context": {
+            "project": "atlas",
+            "workspace": "charts"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "imperial",
+            "must_ask": false,
+            "reason": "saved_preference"
+          },
+          "flood": 25
+        },
+        {
+          "op": "ask",
+          "id": "duplicate_context",
+          "agent": "a",
+          "question": "Which chart units should this preview use?",
+          "category": "bench_charts",
+          "context": {
+            "project": "atlas",
+            "workspace": "charts"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "imperial",
+            "must_ask": false,
+            "reason": "saved_preference"
+          },
+          "flood": 25
+        },
+        {
+          "op": "ask",
+          "id": "fresh_2",
+          "agent": "a",
+          "question": "Which chart units should this preview use?",
+          "category": "bench_charts",
+          "context": {
+            "project": "atlas",
+            "workspace": "charts",
+            "task": "two"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "imperial",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "fresh_3",
+          "agent": "a",
+          "question": "Which chart units should this preview use?",
+          "category": "bench_charts",
+          "context": {
+            "project": "atlas",
+            "workspace": "charts",
+            "task": "three"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "imperial",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "resumed",
+          "agent": "b",
+          "question": "Which chart units should this preview use?",
+          "category": "bench_charts",
+          "context": {
+            "project": "atlas",
+            "workspace": "charts"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "imperial",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        }
+      ]
+    },
+    {
+      "id": "charts.negative_controls",
+      "domain": "charts",
+      "family": "negative_controls",
+      "rules": [
+        {
+          "id": "main",
+          "category": "bench_charts",
+          "predicate": {
+            "keywords": [
+              "chart",
+              "units"
+            ],
+            "example_question": "Which chart units should this preview use?",
+            "intent_type": "preference"
+          },
+          "answer": {
+            "value": "metric"
+          },
+          "scope": {
+            "mandatory": {
+              "workspace": "charts"
+            }
+          }
+        }
+      ],
+      "steps": [
+        {
+          "op": "ask",
+          "id": "baseline",
+          "agent": "b",
+          "question": "Which chart units should this preview use?",
+          "category": "bench_charts",
+          "context": {
+            "project": "atlas",
+            "workspace": "charts"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "metric",
+            "must_ask": false,
+            "reason": "saved_preference"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "bad_authored_scope",
+          "agent": "b",
+          "question": "Which chart units should this preview use?",
+          "category": "bench_charts",
+          "context": {
+            "project": "boreal",
+            "workspace": "charts"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "metric",
+            "must_ask": true,
+            "reason": "underspecified_rule_scope"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "silent_change_1",
+          "agent": "a",
+          "question": "Which chart units should this preview use?",
+          "category": "bench_charts",
+          "context": {
+            "project": "atlas",
+            "workspace": "charts"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "imperial",
+            "must_ask": false,
+            "reason": "unannounced_preference_change"
+          }
+        },
+        {
+          "op": "ask",
+          "id": "silent_change_2",
+          "agent": "a",
+          "question": "Which chart units should this preview use?",
+          "category": "bench_charts",
+          "context": {
+            "project": "atlas",
+            "workspace": "charts"
+          },
+          "intent_type": "preference",
+          "reversibility": "reversible",
+          "expected": {
+            "value": "imperial",
+            "must_ask": false,
+            "reason": "unannounced_preference_change"
+          }
+        }
+      ]
+    }
+  ]
+}

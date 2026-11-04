@@ -6,17 +6,13 @@ Strategies:
   B2 supersession  — supersede + recalibration hold until m fresh human answers.
   B3 integrity     — B2 plus evidence-integrity quarantine (same trace outcomes here;
                      the difference is which labels may enter calibration).
-Ablations: B2 without scope predicates (no_boundary), B2 without dependency
-tracking (blast-radius recall forced to 0 — nothing was recorded).
+Ablations: B2 without scope predicates (no_boundary), B2 without recording
+dependency edges. Impact recall matches real work IDs, never unknown coverage.
 """
 import math
 
 from .domain import QuestionRequest
-from .persistence import Store
-from .service import SwitchboardService
-
-RECOVERY_M = 2  # fresh human answers required to clear a recalibration hold (demo default)
-
+from .benchmark import isolated_service
 
 def wilson_interval(successes: int, n: int, z: float = 1.96):
     if n == 0:
@@ -28,15 +24,16 @@ def wilson_interval(successes: int, n: int, z: float = 1.96):
     return [round(max(0.0, centre - margin), 4), round(min(1.0, centre + margin), 4)]
 
 
-def _run(cases, strategy: str, strip_scope: bool = False) -> dict:
-    store = Store(":memory:")
-    svc = SwitchboardService(store)
+def _run(cases, strategy: str, strip_scope: bool = False, record_dependencies: bool = True) -> dict:
+    svc = isolated_service()
+    store = svc.store
     reg = svc.register_agent("replay", "evaluation")
     agent = svc.authenticate(reg["api_key"])
     total = auto = wrong = deferred = stale = oos_auto = 0
     blast_expected = blast_found = 0
     recovery_samples = []
     for case in cases:
+        case_uses = set()
         cat = case["category"]
         rule = case["rule"]
         svc.create_rule(cat, rule["predicate"], rule["answer"],
@@ -67,10 +64,11 @@ def _run(cases, strategy: str, strip_scope: bool = False) -> dict:
                     rid = store.query_one("SELECT id FROM rules WHERE category=?", (cat,))["id"]
                     svc.supersede_rule(rid, new_answer=case["flip_answer"],
                                        new_scope=case.get("flip_scope"))
-                    blast_expected += 1
+                    blast_expected += len(case_uses)
                     after = svc.blast_radius(rid)
-                    if after["affected"]:
-                        blast_found += 1
+                    affected_ids = {row.get("dependent_id") for row in after["affected"]
+                                    if row["proposed_status"] == "revalidate"}
+                    blast_found += len(case_uses & affected_ids)
                     if strategy == "B1_generic":
                         svc.clear_holds(cat)  # immediate resume, no recalibration hold
             resp = svc.ask(agent, QuestionRequest(
@@ -81,6 +79,12 @@ def _run(cases, strategy: str, strip_scope: bool = False) -> dict:
                 since_flip += 1
             if resp["decision"] == "answer":
                 auto += 1
+                if not flipped:
+                    dependent_id = f"legacy-{cat}-{qi}"
+                    case_uses.add(dependent_id)
+                    if record_dependencies:
+                        svc.record_use(agent, resp["receipt_id"], "synthetic_artifact", dependent_id,
+                                       "uses_answer", status="pending")
                 value = (resp["answer"] or {}).get("value")
                 if value != q["gold_answer"]:
                     wrong += 1
@@ -95,10 +99,9 @@ def _run(cases, strategy: str, strip_scope: bool = False) -> dict:
                 deferred += 1
                 # Simulated human answers through the REAL service path (answer_inbox),
                 # which is what counts distinct fresh evidence toward hold release.
-                if strategy in ("B2_supersession", "B3_integrity"):
-                    item = next((i for i in svc.inbox() if i["question_id"] == resp["question_id"]), None)
-                    if item:
-                        svc.answer_inbox(item["id"], {"value": q["gold_answer"]})
+                item = next((i for i in svc.inbox() if i["question_id"] == resp["question_id"]), None)
+                if item:
+                    svc.answer_inbox(item["id"], {"value": q["gold_answer"]}, actor="synthetic_oracle")
     store.close()
     return {
         "strategy": strategy,
@@ -259,8 +262,8 @@ def _run_s3(naive: bool) -> dict:
     releases the hold early and auto-answers the wrong rule more; B3 (production
     service) never counts them.
     """
-    store = Store(":memory:")
-    svc = SwitchboardService(store)
+    svc = isolated_service()
+    store = svc.store
     reg = svc.register_agent("adversary", "agent")
     agent = svc.authenticate(reg["api_key"])
     svc.create_rule("deploy", {"keywords": ["deploy", "target"], "example_question": "Which deploy target?"},
@@ -376,8 +379,8 @@ def run_comparison(cases=None) -> dict:
                   ("B0_static", "B1_generic", "B2_supersession", "B3_integrity")]
     ablations = [
         {**_run(cases, "B2_supersession", strip_scope=True), "strategy": "ablation_no_boundary"},
-        {**_run(cases, "B2_supersession"), "strategy": "ablation_no_dependency",
-         "blast_radius_recall": 0.0, "note": "no record_use edges were kept, so impact is unknown"},
+        {**_run(cases, "B2_supersession", record_dependencies=False), "strategy": "ablation_no_dependency",
+         "note": "record_use calls omitted; recall measured against intended work IDs, coverage remains unknown"},
     ]
     return {
         "strategies": strategies,

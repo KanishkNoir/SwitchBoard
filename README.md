@@ -220,18 +220,19 @@ The hosted MCP endpoint is `<public-origin>/mcp`. OAuth and operator routes have
 
 The integration pass verified **179 backend tests**, the frontend production build, authenticated client calls, mobile OAuth flows, and seven OpenCode gate scenarios. These establish tested behavior, not universal compliance by every agent or a connection to every user's phone.
 
-The [replay evaluator](switchboard/evaluation.py) compares the same **synthetic** preference-change traces:
+The [versioned synthetic benchmark](benchmarks/README.md) tests **40 episodes and 220 questions per strategy** across five domains and eight conditions: reuse, scope, intent, corrections, downstream impact, hard locks, evidence integrity and deliberate failure cases. Every strategy receives the same simulated user answer when it requests review.
 
-| Strategy | Answered automatically | Wrong automatic answers | Stale answers after a correction |
+| Strategy | Correct automatic reuse / 160 eligible questions | Wrong automatic decisions / 220 questions | User reviews / 220 questions |
 |---|---:|---:|---:|
-| Ignore the correction (B0) | 91% | 8 | 8 |
-| Apply it and immediately resume (B1) | 91% | 0 | 0 |
-| Switchboard with recalibration holds (B2) | 73% | 0 | 0 |
-| B2 with evidence-integrity checks (B3) | 73% | 0 | 0 |
+| Always ask | 0 | 0 | 220 |
+| Apply corrections and immediately resume | 135 | 30 | 55 |
+| Switchboard with recalibration holds | 105 | 15 | 100 |
 
-The simple trace favors immediate reuse. The harder question is what happens when the correction itself is wrong: in the noisy-correction trace, recalibration gives **0 wrong automatic answers versus B1's 3**, at **43% versus 100% coverage**. More review buys an opportunity to catch the mistake. When the supplied scope is wrong, both can fail; a hold cannot recover a boundary the system was never told.
+In these fixtures, holds catch noisy corrections at the cost of more review. **All 15 remaining errors** come from incomplete authored scope or preference changes never communicated to Switchboard. A correct value returned across a required-review boundary counts as an error too.
 
-These are small, correlated synthetic traces, not real-user results or a production error-rate guarantee. B3's difference is evidence eligibility; it does not change the simple trace's answers. Adaptive policy proposals, automatic promotion, and AI rewriting of active autonomy policies remain future work.
+Correction-impact checks find **15/15 affected recorded work IDs with zero false alarms**; actually omitting dependency recording finds **0/15**. Unknown coverage earns no detection credit. [Results by condition and ablations](benchmarks/RESULTS.v1.md), [raw traces](benchmarks/results.v1.json), [frozen dataset](benchmarks/scenarios.v1.json) and [reproduction instructions](benchmarks/README.md#reproduce) are public.
+
+These are correlated synthetic service tests with local matching and the risk gate in shadow mode. They do not measure native assistant compliance, real-user time savings or a production error rate. Adaptive policy proposals, automatic promotion and AI rewriting of active autonomy policies remain future work.
 
 ### Verification
 
