@@ -5,6 +5,7 @@ import DecisionStage from "./components/DecisionStage";
 import EvaluationPanel from "./components/Evaluation";
 import FocusMode from "./components/FocusMode";
 import BrandMark from "./components/BrandMark";
+import PublicSandbox from "./components/PublicSandbox";
 import { AgentsPanel, RulesPanel } from "./components/Manage";
 import { AttentionAlerts, DebriefPanel, InboxPanel, ObjectsPanel, PassportPanel } from "./components/Panels";
 import { OnboardingWizard } from "./components/Onboarding";
@@ -20,6 +21,8 @@ const LAPTOPS: TradeOption[] = [
 
 export default function App() {
   const [health, setHealth] = useState<string>("connecting");
+  const [publicSandbox, setPublicSandbox] = useState(false);
+  const [sandboxRevision, setSandboxRevision] = useState(0);
   const [t3, setT3] = useState(false);
   const [steeringSuggestionsAvailable, setSteeringSuggestionsAvailable] = useState(false);
   const [steeringSummaryAvailable, setSteeringSummaryAvailable] = useState(false);
@@ -124,6 +127,7 @@ export default function App() {
       .then((h) => {
         const missing = REQUIRED_CAPS.filter((c) => !(h.capabilities ?? []).includes(c));
         setMissingCaps(missing);
+        setPublicSandbox((h.capabilities ?? []).includes("public_sandbox"));
         setHealth(missing.length === 0 ? "Connected" : "Server too old");
         setT3(h.t3_enabled);
         setSteeringSuggestionsAvailable((h.capabilities ?? []).includes("steering_suggestions"));
@@ -274,10 +278,15 @@ export default function App() {
                 : "Can't reach your hub — answers will wait"}
           </span>
           <span className="tier">
-            {t3 ? "Reasoning: on" : "Reasoning: off — questions will wait for you"}
+            {publicSandbox ? "Sample workspace · model calls off" : t3 ? "Reasoning: on" : "Reasoning: off — questions will wait for you"}
           </span>
         </div>
       </header>
+
+      {publicSandbox && <PublicSandbox compact={focusMode}
+        onFocus={() => setFocusMode(true)}
+        onManage={() => { setFocusMode(false); setView("manage"); }}
+        onChange={() => { loadInbox(); setSandboxRevision((v) => v + 1); }} />}
 
       {!onboardingPending && !focusMode && <nav className="viewtabs">
         <div className="seg" role="tablist" aria-label="Views" ref={segRef}>
@@ -295,9 +304,9 @@ export default function App() {
             Agents &amp; rules
           </button>
         </div>
-        <button className="how-link" onClick={() => setShowDemo(true)} aria-haspopup="dialog">
+        {!publicSandbox && <button className="how-link" onClick={() => setShowDemo(true)} aria-haspopup="dialog">
           How it works <span aria-hidden="true">↗</span>
-        </button>
+        </button>}
         {notice && <span className="notice">{notice}</span>}
       </nav>}
       {!focusMode && view === "decision" && (
@@ -386,10 +395,10 @@ export default function App() {
         <main className="manage-grid view-morph">
           <section>
             <AttentionAlerts />
-            <RulesPanel />
+            <RulesPanel key={sandboxRevision} />
           </section>
           <aside>
-            <AgentsPanel />
+            <AgentsPanel readOnly={publicSandbox} />
           </aside>
         </main>
       ) : (

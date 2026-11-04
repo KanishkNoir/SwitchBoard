@@ -4,7 +4,7 @@ import type { AgentRow, BlastItem, RuleRow, RuleUpdate, ScopeContract } from "..
 import { ScopeEditor, scopeDraft, scopeValue } from "./ScopeEditor";
 import type { ScopeDraft } from "./ScopeEditor";
 
-export function AgentsPanel() {
+export function AgentsPanel({ readOnly = false }: { readOnly?: boolean }) {
   const [agents, setAgents] = useState<AgentRow[]>([]);
   const [name, setName] = useState("");
   const [filter, setFilter] = useState("");
@@ -67,7 +67,7 @@ export function AgentsPanel() {
           <div className="bb">id {a.id.slice(0, 8)}… · scopes {a.scopes_json}</div>
         </div>
       ))}
-      <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+      {readOnly ? <p className="note">These are scripted sample agents in your disposable playground. Connect real assistants in your own Switchboard installation.</p> : <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -76,7 +76,7 @@ export function AgentsPanel() {
           style={{ flex: 1 }}
         />
         <button className="primary" onClick={register}>Register</button>
-      </div>
+      </div>}
       {newKey && (
         <div className="note">
           New agent key (shown once — store it in that agent's env as SWITCHBOARD_AGENT_KEY):
@@ -284,7 +284,7 @@ export function RulesPanel() {
             When asked about <b>{(pred.keywords ?? []).join(", ") || "—"}</b> → <b>{ans.value ?? "—"}</b>
             <div className="bb">
               scope {scp.mandatory ? JSON.stringify(scp.mandatory) : "any"} ·{" "}
-              {r.confirmed_by_human ? "human-confirmed" : "unconfirmed"}
+              {r.source_type === "synthetic" ? "example saved choice" : r.confirmed_by_human ? "human-confirmed" : "unconfirmed"}
             </div>
             {r.scope_validation && !r.scope_validation.valid && <div className="note">
               Automatic reuse paused: {r.scope_validation.missing_fields.length
