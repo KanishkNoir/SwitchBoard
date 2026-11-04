@@ -37,8 +37,16 @@ class HubClient:
                     "question_id": None, "decision_id": None, "rule_versions": []}
 
     def action_request_status(self, question_id: str) -> dict:
+        return self._question_status("/api/action-requests", question_id)
+
+    def question_answer_status(self, question_id: str) -> dict:
+        """Poll any owned question, including preferences and permissions."""
+        return self._question_status("/api/questions", question_id, suffix="/answer")
+
+    def _question_status(self, prefix, question_id, suffix=""):
+        from urllib.parse import quote
         try:
-            response = self._client.get(f"/api/action-requests/{question_id}")
+            response = self._client.get(f"{prefix}/{quote(question_id, safe='')}{suffix}")
             response.raise_for_status()
             return response.json()
         except Exception:
