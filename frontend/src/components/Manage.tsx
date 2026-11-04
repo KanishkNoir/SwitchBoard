@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api";
-import type { AgentRow, BlastItem, RuleRow } from "../types";
+import type { AgentRow, BlastItem, RuleRow, RuleUpdate, ScopeContract } from "../types";
+import { ScopeEditor, scopeDraft, scopeValue } from "./ScopeEditor";
+import type { ScopeDraft } from "./ScopeEditor";
 
 export function AgentsPanel() {
   const [agents, setAgents] = useState<AgentRow[]>([]);
@@ -93,21 +95,92 @@ export function RulesPanel() {
   const [cat, setCat] = useState("purchase");
   const [keywords, setKeywords] = useState("");
   const [answer, setAnswer] = useState("");
-  const [scopeKey, setScopeKey] = useState("");
-  const [scopeVal, setScopeVal] = useState("");
+  const [scope, setScope] = useState<ScopeDraft>({ global: false, fields: [{ name: "", values: [""] }] });
+  const [contract, setContract] = useState<ScopeContract | null>(null);
+  const [requiredFields, setRequiredFields] = useState("");
+  const [evidenceFields, setEvidenceFields] = useState("");
+  const [allowGlobal, setAllowGlobal] = useState(false);
+  const [contractReady, setContractReady] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const editRequest = useRef(0);
   // supersede form (per selected rule)
   const [sel, setSel] = useState<string | null>(null);
   const [newAnswer, setNewAnswer] = useState("");
-  const [preview, setPreview] = useState<{ ruleId: string; affected: number } | null>(null);
+  const [newScope, setNewScope] = useState<ScopeDraft>({ global: false, fields: [] });
+  const [editContract, setEditContract] = useState<ScopeContract | null>(null);
+  const [reviewHold, setReviewHold] = useState<string | null>(null);
+  const [preview, setPreview] = useState<{ ruleId: string; affected: number; plan: RuleUpdate; body: unknown } | null>(null);
+
+  const correctionBody = (r: RuleRow) => {
+    const old = JSON.parse(r.answer_json) as { value?: unknown };
+    // Preserve option IDs and structured values when the answer itself is unchanged.
+    return { answer: String(old.value ?? "") === newAnswer ? old : { value: newAnswer.trim() }, scope: scopeValue(newScope), expected_version_id: r.version_id };
+  };
+
+  const beginCorrection = async (r: RuleRow) => {
+    const request = ++editRequest.current;
+    setPreview(null);
+    setEditContract(null);
+    setNewAnswer("");
+    setSel(null);
+    try {
+      const current = await api.scopeContract(r.category);
+      if (request !== editRequest.current) return;
+      setEditContract(current);
+      setNewScope(scopeDraft(JSON.parse(r.scope_json)));
+      setNewAnswer(String((JSON.parse(r.answer_json) as { value?: unknown }).value ?? ""));
+      setSel(r.rule_id);
+    } catch { setMsg("Could not load this category's boundaries. Try again."); }
+  };
+
+  useEffect(() => {
+    let active = true;
+    setContractReady(false);
+    setContract(null);
+    api.scopeContract(cat.trim() || "purchase").then((current) => {
+      if (!active) return;
+      setContract(current);
+      setRequiredFields(current.required_fields.join(", "));
+      setEvidenceFields(current.configured ? current.evidence_fields.join(", ") : "");
+      setAllowGlobal(current.allow_global);
+      setContractReady(true);
+    }).catch(() => { if (active) setMsg("Category boundaries could not be loaded."); });
+    return () => { active = false; };
+  }, [cat]);
+
+  const saveContract = async () => {
+    if (saving) return;
+    setSaving(true);
+    const fields = (text: string) => text.split(",").map((v) => v.trim()).filter(Boolean);
+    try {
+      const out = await api.saveScopeContract(cat.trim() || "purchase", {
+        required_fields: fields(requiredFields), evidence_fields: fields(evidenceFields), allow_global: allowGlobal,
+      });
+      setContract(out);
+      editRequest.current++;
+      setEditContract(null);
+      setSel(null);
+      setPreview(null);
+      const count = out.existing_rule_violations?.length ?? 0;
+      setMsg(`Boundaries saved. ${count} existing rule(s) need repair before they can answer automatically.`);
+      await load();
+    } catch (error) { setMsg(error instanceof Error ? error.message : "Could not save category boundaries."); }
+    finally { setSaving(false); }
+  };
 
   const previewCorrection = async (r: RuleRow) => {
     if (!newAnswer.trim()) {
       setMsg("Type the corrected answer first — then preview what it touches.");
       return;
     }
-    const out = await api.blast(r.rule_id);
-    setPreview({ ruleId: r.rule_id, affected: out.affected.length });
-    setBlast({ ruleId: r.rule_id, items: out.affected, caveat: out.coverage_caveat });
+    try {
+      const body = correctionBody(r);
+      const out = await api.previewRule(r.rule_id, body);
+      const items = out.blast_radius.affected;
+      const affected = items.filter((i) => ["revalidate", "review_completed", "review_failed"].includes(i.proposed_status)).length;
+      setPreview({ ruleId: r.rule_id, affected, plan: out, body });
+      setBlast({ ruleId: r.rule_id, items, caveat: out.blast_radius.coverage_caveat });
+    } catch (error) { setPreview(null); setMsg(error instanceof Error ? error.message : "Could not preview the correction."); }
   };
 
   const load = useCallback(async () => {
@@ -122,43 +195,50 @@ export function RulesPanel() {
   }, [load]);
 
   const create = async () => {
+    if (saving) return;
     const kw = keywords.split(",").map((k) => k.trim()).filter(Boolean);
     if (!kw.length || !answer.trim()) {
       setMsg("Keywords and an answer are required.");
       return;
     }
-    if (!scopeKey.trim() || !scopeVal.trim()) {
-      setMsg("A standing rule needs a limit — fill in both scope boxes so it can't apply everywhere. Unscoped rules are not created here.");
-      return;
-    }
+    setSaving(true);
     try {
       await api.createRule({
         category: cat.trim() || "purchase",
         predicate: { keywords: kw },
         answer: { value: answer.trim() },
-        scope: { mandatory: { [scopeKey.trim()]: scopeVal.trim() } },
+        scope: scopeValue(scope),
       });
-    } catch {
-      setMsg("Switchboard refused that rule (locked or unscoped categories can't get one). Nothing was saved.");
+    } catch (error) {
+      setMsg(error instanceof Error ? error.message : "Could not create the rule.");
       return;
-    }
-    setMsg(`Rule created in ${cat} — it starts as a suggestion. Switchboard keeps asking until this category earns more trust. Scope: only when ${scopeKey.trim()} = ${scopeVal.trim()}.`);
+    } finally { setSaving(false); }
+    setMsg(`Rule created in ${cat}. Its category's current review setting still applies.`);
     setKeywords("");
     setAnswer("");
     load();
   };
 
   const supersede = async (r: RuleRow) => {
+    if (saving) return;
     if (!newAnswer.trim()) {
       setMsg("Type the corrected answer first.");
       return;
     }
-    const out = await api.supersede(r.rule_id, { answer: { value: newAnswer.trim() } });
-    setPreview(null);
-    setBlast({ ruleId: r.rule_id, items: out.blast_radius.affected });
-    setMsg(`Rule corrected → new version. Category is now recalibrating; affected decisions are listed below.`);
-    setNewAnswer("");
-    load();
+    if (preview?.ruleId !== r.rule_id) return;
+    setSaving(true);
+    try {
+      const out = await api.supersede(r.rule_id, preview.body);
+      setPreview(null);
+      setBlast({ ruleId: r.rule_id, items: out.blast_radius.affected, caveat: out.blast_radius.coverage_caveat });
+      setMsg(!out.changed ? "Rule unchanged. Its version and calibration were kept." : out.required_confirmations
+        ? `Rule corrected. Only this rule is paused until ${out.required_confirmations} fresh confirmation(s).`
+        : "Boundary narrowed. The remaining scope keeps its calibration.");
+      setSel(null);
+      setNewAnswer("");
+      load();
+    } catch (error) { setPreview(null); setMsg(error instanceof Error ? error.message : "Could not save the correction."); }
+    finally { setSaving(false); }
   };
 
   const showBlast = async (r: RuleRow) => {
@@ -169,6 +249,18 @@ export function RulesPanel() {
   const revalidate = async (decisionId: string) => {
     const out = await api.revalidate(decisionId);
     setMsg(`Revalidated → ${out.decision}${out.answer?.value ? ` (${out.answer.value})` : ""}: ${out.reason_code}`);
+  };
+
+  const resume = async (r: RuleRow) => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      await api.reviewRuleHold(r.rule_id, r.version_id);
+      setReviewHold(null);
+      setMsg("This rule's hold was released by your review. Other holds, hard locks and the category's review setting still apply.");
+      await load();
+    } catch (error) { setMsg(error instanceof Error ? error.message : "Could not review this rule."); }
+    finally { setSaving(false); }
   };
 
   return (
@@ -194,8 +286,22 @@ export function RulesPanel() {
               scope {scp.mandatory ? JSON.stringify(scp.mandatory) : "any"} ·{" "}
               {r.confirmed_by_human ? "human-confirmed" : "unconfirmed"}
             </div>
+            {r.scope_validation && !r.scope_validation.valid && <div className="note">
+              Automatic reuse paused: {r.scope_validation.missing_fields.length
+                ? `add boundaries for ${r.scope_validation.missing_fields.join(", ")}.`
+                : "this scope does not meet the category's requirements."}
+            </div>}
+            {r.recalibration && <div className="note">
+              This rule is recalibrating: {r.recalibration.fresh_confirmations} / {r.recalibration.required_confirmations} fresh contexts confirmed.
+              {r.scope_validation?.valid && <div style={{ marginTop: 6 }}><button onClick={() => setReviewHold(reviewHold === r.rule_id ? null : r.rule_id)}>Review recalibration</button></div>}
+            </div>}
+            {reviewHold === r.rule_id && r.recalibration && <div className="detailbox">
+              <p>Confirm that <b>{ans.value ?? "this answer"}</b> is your standing choice inside the boundaries shown above. This resumes only this rule; it does not add correctness evidence.</p>
+              <div className="taprow"><button className="primary" disabled={saving} onClick={() => resume(r)}>Confirm boundaries &amp; resume</button>
+                <button onClick={() => setReviewHold(null)}>Keep reviewing</button></div>
+            </div>}
             <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-              <button onClick={() => { setSel(sel === r.rule_id ? null : r.rule_id); }}>
+              <button onClick={() => { if (sel === r.rule_id) { setSel(null); setPreview(null); } else { void beginCorrection(r); } }}>
                 Correct this rule
               </button>
               <button onClick={() => showBlast(r)}>Blast radius</button>
@@ -209,22 +315,25 @@ export function RulesPanel() {
                 <div style={{ display: "flex", gap: 8 }}>
                   <input
                     value={newAnswer}
-                    onChange={(e) => setNewAnswer(e.target.value)}
+                    onChange={(e) => { setNewAnswer(e.target.value); setPreview(null); }}
                     placeholder="corrected answer"
                     style={{ flex: 1 }}
                   />
                   <button onClick={() => previewCorrection(r)}>Preview impact</button>
                 </div>
+                <ScopeEditor value={newScope} onChange={(next) => { setNewScope(next); setPreview(null); }}
+                  allowGlobal={editContract?.allow_global} required={editContract?.required_fields} />
                 {preview?.ruleId === r.rule_id && (
                   <div className="detailbox">
                     <div>
-                      <b>{ans.value ?? "—"}</b> → <b>{newAnswer}</b>. This creates v
-                      {r.version_number + 1}, pauses the category for recalibration, and
-                      flags <b>{preview.affected}</b> past decision(s) below for review.
-                      The old version stays in the ledger — correcting never rewrites history.
+                      {!preview.plan.changed ? "This is unchanged. The current version and any existing hold will be kept."
+                        : <>This creates v{preview.plan.version_number}. {preview.plan.required_confirmations
+                          ? `Only this rule pauses until ${preview.plan.required_confirmations} fresh confirmation(s).`
+                          : "The remaining, narrower scope keeps its calibration."} The old version stays in the ledger.</>}
+                      {" "}<b>{preview.affected}</b> recorded work item(s) need review under the proposed rule. Unknown coverage is listed separately below.
                     </div>
                     <div className="taprow">
-                      <button className="primary" onClick={() => supersede(r)}>Confirm correction</button>
+                      <button className="primary" disabled={saving} onClick={() => supersede(r)}>Confirm correction</button>
                       <button onClick={() => setPreview(null)}>Keep current rule</button>
                     </div>
                   </div>
@@ -256,20 +365,28 @@ export function RulesPanel() {
         </div>
       )}
 
+      <h2 style={{ marginTop: 18 }}>Category boundaries</h2>
+      <p className="prose">Choose which facts a rule must name before it can answer automatically. These requirements also apply to existing rules.</p>
+      <div className="rule-policy-form" style={{ display: "grid", gap: 8 }}>
+        <label>Category<input aria-label="Rule category" value={cat} disabled={saving} onChange={(e) => setCat(e.target.value)} placeholder="category" /></label>
+        <div className="bb">{contract?.configured ? "Requirements configured." : "No category requirements configured. Existing rules keep their saved limits."}</div>
+        <label>Required boundary fields<input aria-label="Required boundary fields" value={requiredFields} onChange={(e) => setRequiredFields(e.target.value)} placeholder="e.g. project, workspace" /></label>
+        <label>Other fields that distinguish fresh confirmations<input aria-label="Fresh confirmation fields" value={evidenceFields} onChange={(e) => setEvidenceFields(e.target.value)} placeholder="e.g. document_kind (optional)" /></label>
+        <div className="bb">Required and saved rule boundaries always count. Counters and timestamps do not count unless you explicitly declare them here.</div>
+        <label><input type="checkbox" checked={allowGlobal} onChange={(e) => setAllowGlobal(e.target.checked)} /> Allow deliberately confirmed global rules in this category</label>
+        <button onClick={saveContract} disabled={!contractReady || saving}>Save category requirements</button>
+      </div>
+
       <h2 style={{ marginTop: 18 }}>New rule</h2>
       <p className="prose" style={{ marginBottom: 8 }}>
-        A new rule starts as a suggestion: Switchboard keeps asking until this
-        category earns more trust. It only ever applies inside the limit you set.
+        A new category starts in review. Rules use the category's current setting
+        and only apply inside their confirmed boundaries.
       </p>
       <div style={{ display: "grid", gap: 8 }}>
-        <input value={cat} onChange={(e) => setCat(e.target.value)} placeholder="category" />
         <input value={keywords} onChange={(e) => setKeywords(e.target.value)} placeholder="keywords, comma separated (e.g. deploy, target)" />
         <input value={answer} onChange={(e) => setAnswer(e.target.value)} placeholder="answer value" />
-        <div style={{ display: "flex", gap: 8 }}>
-          <input value={scopeKey} onChange={(e) => setScopeKey(e.target.value)} placeholder="scope field (required, e.g. env)" style={{ flex: 1 }} />
-          <input value={scopeVal} onChange={(e) => setScopeVal(e.target.value)} placeholder="scope value (e.g. staging)" style={{ flex: 1 }} />
-        </div>
-        <button className="primary" onClick={create}>Create rule (starts as suggestion)</button>
+        <ScopeEditor value={scope} onChange={setScope} allowGlobal={contract?.allow_global} required={contract?.required_fields} />
+        <button className="primary" onClick={create} disabled={!contractReady || saving}>Create rule</button>
       </div>
       {msg && <div className="note">{msg}</div>}
     </div>

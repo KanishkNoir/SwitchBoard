@@ -104,6 +104,28 @@ export interface RuleRow {
   scope_json: string;
   source_type: string;
   confirmed_by_human: number;
+  scope_validation?: { valid: boolean; reason: string; missing_fields: string[] };
+  recalibration?: { required_confirmations: number; fresh_confirmations: number } | null;
+}
+
+export interface ScopeContract {
+  category: string;
+  configured: boolean;
+  required_fields: string[];
+  evidence_fields: string[];
+  allow_global: boolean;
+  existing_rule_violations?: { rule_id: string; reason: string; missing_fields: string[] }[];
+}
+
+export interface RuleUpdate {
+  changed: boolean;
+  change_kind: string;
+  required_confirmations: number;
+  preserves_hold: boolean;
+  version_number: number;
+  current_version_id?: string;
+  version_id?: string;
+  blast_radius: { affected: BlastItem[]; coverage_caveat: string };
 }
 
 export interface BlastItem {

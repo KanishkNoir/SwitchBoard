@@ -1,6 +1,6 @@
 """Reproducible synthetic service benchmark. No network, provider calls or live hub.
 
-python -m switchboard.benchmark --output benchmarks/results.v1.json
+python -m switchboard.benchmark --output .tmp/results-current.json
 The frozen input contains independent expected answers and work IDs/statuses.
 """
 import argparse
@@ -223,7 +223,8 @@ def main():
     args.output.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     if args.markdown:
         args.markdown.parent.mkdir(parents=True, exist_ok=True)
-        args.markdown.write_text(markdown_report(report), encoding="utf-8")
+        json_link = args.output.resolve().relative_to(args.markdown.parent.resolve(), walk_up=True).as_posix()
+        args.markdown.write_text(markdown_report(report, json_link=json_link), encoding="utf-8")
     for arm, result in report["arms"].items():
         s, c = result["summary"], result["summary"]["counts"]
         print(f"{arm}: queries={c['queries']} correct_reuse={c['correct_reuse']} "
@@ -231,9 +232,9 @@ def main():
               f"episodes_passed={s['episodes_passed']}/{s['episodes']}")
 
 
-def markdown_report(report):
-    lines = ["# Synthetic benchmark v1 results", "",
-             "Generated from [results.v1.json](results.v1.json). See [method and limits](README.md).", "",
+def markdown_report(report, json_link="results.v1.json"):
+    lines = ["# Synthetic service benchmark results", "",
+             f"Generated from [{json_link}]({json_link}). See [method and limits](README.md).", "",
              "Each arm receives 40 correlated episodes, 220 questions: 160 eligible for reuse and 60 requiring review.", "",
              "| Arm | Correct automatic reuse / 160 eligible | Wrong automatic decisions / 220 queries | Reviews / 220 queries | Episodes passed / 40 |",
              "|---|---:|---:|---:|---:|"]

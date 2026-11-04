@@ -9,6 +9,8 @@ from .domain import (RISK_HINTS, QuestionRequest, canonical_json, classify_risk,
                      normalize_text, sha256_hex, tokens)
 from .matching import MatcherLadder
 from .persistence import Store, new_id, now_iso
+from .rule_policy import (DEFAULT_EVIDENCE_FIELDS, correction_plan, fresh_context_key,
+                          normalized_predicate, scope_contract_result, scope_relation)
 
 EVIDENCE_ELIGIBLE = {"human_confirmed": True, "human_corrected": True,
                      "tool_verified": False, "agent_asserted": False,
@@ -87,7 +89,18 @@ class SwitchboardService:
         if category:
             sql += " WHERE r.category=?"
             params = (category,)
-        return self.store.query(sql + " ORDER BY r.created_at", params)
+        rows = self.store.query(sql + " ORDER BY r.created_at", params)
+        contracts = {}
+        holds = {(h["rule_id"], h["new_version_id"]): h for h in self.store.query(
+            "SELECT rule_id,new_version_id,required_m,fresh_count FROM recalibration_holds WHERE status='held'")}
+        for row in rows:
+            if row["category"] not in contracts:
+                contracts[row["category"]] = self.scope_contract(row["category"])
+            row["scope_validation"] = scope_contract_result(json.loads(row["scope_json"]), contracts[row["category"]])
+            hold = holds.get((row["rule_id"], row["version_id"]))
+            row["recalibration"] = ({"required_confirmations": hold["required_m"],
+                                      "fresh_confirmations": hold["fresh_count"]} if hold else None)
+        return rows
 
     def rule_versions(self, rule_id):
         if not self.store.query_one("SELECT id FROM rules WHERE id=?", (rule_id,)):
@@ -144,10 +157,98 @@ class SwitchboardService:
         self.store.emit("human", "local_user", ev, "category", category, {"stage": stage, "reason": reason})
         return self.category(category)
 
+    # ---------- operator-defined category boundaries ----------
+    def scope_contract(self, category):
+        row = self.store.query_one("SELECT * FROM category_scope_contracts WHERE category=?", (category,))
+        return {"category": category, "configured": bool(row),
+                "required_fields": json.loads(row["required_fields_json"]) if row else [],
+                "evidence_fields": json.loads(row["evidence_fields_json"]) if row else list(DEFAULT_EVIDENCE_FIELDS),
+                "allow_global": bool(row["allow_global"]) if row else False}
+
+    @_transactional
+    def set_scope_contract(self, category, required_fields, allow_global=False, evidence_fields=None,
+                           actor="local_user"):
+        if not isinstance(category, str) or not category.strip() or category != category.strip():
+            raise SwitchboardError("INVALID_SCHEMA", "category must be a nonempty name")
+        def fields(value, name):
+            if (not isinstance(value, list) or len(value) > 32
+                    or any(not isinstance(v, str) or not v.strip() or v != v.strip() or len(v) > 64 for v in value)):
+                raise SwitchboardError("INVALID_SCHEMA", f"{name} must contain up to 32 nonempty field names")
+            return sorted(set(value))
+        required = fields(required_fields, "required_fields")
+        # New contracts count only declared dimensions by default, plus mandatory rule fields.
+        evidence = fields(evidence_fields if evidence_fields is not None else required, "evidence_fields")
+        if not isinstance(allow_global, bool):
+            raise SwitchboardError("INVALID_SCHEMA", "allow_global must be a boolean")
+        before = self.scope_contract(category)
+        desired = {"category": category, "configured": True, "required_fields": required,
+                   "evidence_fields": evidence, "allow_global": allow_global}
+        if before != desired:
+            self.category(category)
+            self.store.execute(
+                "INSERT INTO category_scope_contracts(category,required_fields_json,evidence_fields_json,"
+                "allow_global,updated_by,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(category) DO UPDATE SET "
+                "required_fields_json=excluded.required_fields_json,evidence_fields_json=excluded.evidence_fields_json,"
+                "allow_global=excluded.allow_global,updated_by=excluded.updated_by,updated_at=excluded.updated_at",
+                (category, json.dumps(required), json.dumps(evidence), int(allow_global), actor, now_iso()))
+            # Evidence collected under a different definition cannot release current holds.
+            self.store.execute("UPDATE recalibration_holds SET fresh_count=0,seen_contexts_json='[]' "
+                               "WHERE category=? AND status='held'", (category,))
+            self.store.emit("human", actor, "category.scope_contract_updated", "category", category,
+                            {"before": before, "after": desired})
+        violations = [{"rule_id": r["rule_id"], **r["scope_validation"]}
+                      for r in self.list_rules_human(category) if not r["scope_validation"]["valid"]]
+        return {**desired, "existing_rule_violations": violations}
+
+    def _validate_rule_scope(self, category, scope):
+        state = scope_contract_result(scope, self.scope_contract(category))
+        if not state["valid"]:
+            code = "GLOBAL_RULE_NOT_ALLOWED" if state["reason"] == "global_not_allowed" else "RULE_SCOPE_REQUIRED"
+            raise SwitchboardError(code, state.get("message") or
+                                   ("Required rule boundaries: " + ", ".join(state["missing_fields"])
+                                    if state["missing_fields"] else "A bounded scope is required"))
+        return state
+
+    def _rule_update(self, rule_id, new_answer=None, new_scope=None, new_predicate=None, expected_version_id=None):
+        rule = self.store.query_one("SELECT * FROM rules WHERE id=?", (rule_id,))
+        if not rule:
+            raise SwitchboardError("NOT_FOUND", "rule")
+        old = self.store.query_one("SELECT * FROM rule_versions WHERE id=?", (rule["active_version_id"],))
+        if expected_version_id is not None and expected_version_id != old["id"]:
+            raise SwitchboardError("CONFLICT", "This rule changed since it was loaded. Refresh before correcting it.")
+        scope = new_scope if new_scope is not None else json.loads(old["scope_json"])
+        pred = new_predicate if new_predicate is not None else json.loads(old["predicate_json"])
+        answer = new_answer if new_answer is not None else json.loads(old["answer_json"])
+        self._validate_rule_scope(rule["category"], scope)
+        try:
+            normalized_predicate(pred)
+        except ValueError as exc:
+            raise SwitchboardError("INVALID_SCHEMA", str(exc)) from exc
+        hold = self.store.query_one("SELECT required_m FROM recalibration_holds "
+                                    "WHERE rule_id=? AND status='held' AND new_version_id=?",
+                                    (rule_id, old["id"]))
+        plan = correction_plan(json.loads(old["predicate_json"]), json.loads(old["answer_json"]),
+                               json.loads(old["scope_json"]), pred, answer, scope,
+                               held_required=hold["required_m"] if hold else 0)
+        return rule, old, pred, answer, scope, plan
+
+    def preview_rule_update(self, rule_id, new_answer=None, new_scope=None, new_predicate=None, expected_version_id=None):
+        with self.store.transaction():
+            _, old, pred, answer, scope, plan = self._rule_update(rule_id, new_answer, new_scope, new_predicate, expected_version_id)
+            proposed = {"_predicate": pred, "_answer": answer, "_scope": scope}
+            return {**plan, "current_version_id": old["id"],
+                    "version_number": old["version_number"] + int(plan["changed"]),
+                    "blast_radius": self.blast_radius(rule_id, proposed=proposed)}
+
     # ---------- rules ----------
     @_transactional
     def create_rule(self, category, predicate, answer, scope=None, source_type="explicit_edit",
                     confirmed_by_human=True, actor="local_user"):
+        self._validate_rule_scope(category, scope if scope is not None else {})
+        try:
+            normalized_predicate(predicate)
+        except ValueError as exc:
+            raise SwitchboardError("INVALID_SCHEMA", str(exc)) from exc
         rid = new_id()
         vid = new_id()
         ts = now_iso()
@@ -164,11 +265,13 @@ class SwitchboardService:
         return {"rule_id": rid, "version_id": vid, "version_number": 1}
 
     @_transactional
-    def supersede_rule(self, rule_id, new_answer=None, new_scope=None, new_predicate=None, actor="local_user"):
-        rule = self.store.query_one("SELECT * FROM rules WHERE id=?", (rule_id,))
-        if not rule:
-            raise SwitchboardError("NOT_FOUND", "rule")
-        old = self.store.query_one("SELECT * FROM rule_versions WHERE id=?", (rule["active_version_id"],))
+    def supersede_rule(self, rule_id, new_answer=None, new_scope=None, new_predicate=None, actor="local_user", expected_version_id=None):
+        rule, old, pred, answer, scope, plan = self._rule_update(rule_id, new_answer, new_scope, new_predicate, expected_version_id)
+        if not plan["changed"]:
+            self.store.emit("human", actor, "rule.update_unchanged", "rule", rule_id,
+                            {"version_id": old["id"], "hold_preserved": plan["preserves_hold"]})
+            return {"rule_id": rule_id, "version_id": old["id"], "version_number": old["version_number"],
+                    **plan, "blast_radius": self.blast_radius(rule_id)}
         vid = new_id()
         ts = now_iso()
         num = (old["version_number"] + 1) if old else 1
@@ -177,9 +280,7 @@ class SwitchboardService:
             "source_type,evidence_ids_json,confirmed_by_human,valid_from,supersedes_version_id,created_at)"
             " VALUES(?,?,?,?,?,?,?,?,1,?,?,?)",
             (vid, rule_id, num,
-             json.dumps(new_predicate if new_predicate is not None else json.loads(old["predicate_json"])),
-             json.dumps(new_answer if new_answer is not None else json.loads(old["answer_json"])),
-             json.dumps(new_scope if new_scope is not None else json.loads(old["scope_json"])),
+             json.dumps(pred), json.dumps(answer), json.dumps(scope),
              "explicit_edit", "[]", ts, old["id"] if old else None, ts))
         if old:
             self.store.execute("UPDATE rule_versions SET valid_until=? WHERE id=?", (ts, old["id"]))
@@ -191,24 +292,23 @@ class SwitchboardService:
         self.store.execute(
             "UPDATE category_settings SET active_preference_epoch=?, updated_at=? WHERE category=?",
             (f"epoch-{epoch_num}", ts, rule["category"]))
-        scope_for_hold = new_scope if new_scope is not None else json.loads(old["scope_json"])
+        scope_for_hold = scope
         fingerprint = sha256_hex(canonical_json(scope_for_hold.get("mandatory", {})))
-        pred_for_hold = new_predicate if new_predicate is not None else json.loads(old["predicate_json"])
-        # T0 (keyword/exact, human-supplied flip) needs 1 more distinct context; semantic needs 3.
-        required_m = 1 if (pred_for_hold.get("keywords") or pred_for_hold.get("exact_question")) else 3
+        required_m = plan["required_confirmations"]
         self.store.execute(
             "UPDATE recalibration_holds SET status='superseded' WHERE rule_id=? AND status='held'",
             (rule_id,))
-        self.store.execute(
-            "INSERT INTO recalibration_holds(id,category,rule_id,new_version_id,scope_fingerprint,"
-            "preference_epoch,required_m,fresh_count,seen_contexts_json,status,created_at)"
-            " VALUES(?,?,?,?,?,?,?,0,'[]','held',?)",
-            (new_id(), rule["category"], rule_id, vid, fingerprint, f"epoch-{epoch_num}", required_m, ts))
+        if required_m:
+            self.store.execute(
+                "INSERT INTO recalibration_holds(id,category,rule_id,new_version_id,scope_fingerprint,"
+                "preference_epoch,required_m,fresh_count,seen_contexts_json,status,created_at)"
+                " VALUES(?,?,?,?,?,?,?,0,'[]','held',?)",
+                (new_id(), rule["category"], rule_id, vid, fingerprint, f"epoch-{epoch_num}", required_m, ts))
         self.store.emit("human", actor, "rule.superseded", "rule", rule_id,
                         {"old_version": old["id"] if old else None, "new_version": vid,
-                         "preference_epoch": f"epoch-{epoch_num}"})
+                         "preference_epoch": f"epoch-{epoch_num}", **plan})
         blast = self.blast_radius(rule_id)
-        return {"rule_id": rule_id, "version_id": vid, "version_number": num, "blast_radius": blast}
+        return {"rule_id": rule_id, "version_id": vid, "version_number": num, **plan, "blast_radius": blast}
 
     # ---------- V1 sliced recalibration holds ----------
     def held_rule_ids(self, category):
@@ -231,6 +331,22 @@ class SwitchboardService:
         self.store.emit("human", actor, "calibration.epoch_started", "category", category,
                         {"action": "holds_cleared_manually"})
         return {"category": category, "cleared": True}
+
+    @_transactional
+    def review_rule_hold(self, rule_id, expected_version_id, confirmed=False, actor="local_user"):
+        if confirmed is not True or not isinstance(expected_version_id, str) or not expected_version_id:
+            raise SwitchboardError("CONFIRMATION_REQUIRED", "Deliberately confirm the current rule and its boundaries")
+        rule, old, _, _, _, _ = self._rule_update(rule_id, expected_version_id=expected_version_id)
+        if self.category(rule["category"])["locked"] or rule["category"] in self.cfg.locked_categories:
+            raise SwitchboardError("RULE_NOT_ALLOWED_LOCKED", "Locked categories always require individual review")
+        updated = self.store.execute(
+            "UPDATE recalibration_holds SET status='released',released_at=? "
+            "WHERE rule_id=? AND new_version_id=? AND status='held'", (now_iso(), rule_id, old["id"])).rowcount
+        if updated:
+            self.store.emit("human", actor, "rule.recalibration_reviewed", "rule", rule_id,
+                            {"version_id": old["id"], "action": "explicit_rule_review", "holds_released": updated})
+        # This is a policy choice, not an outcome label or fabricated fresh context.
+        return {"rule_id": rule_id, "version_id": old["id"], "released": bool(updated)}
 
     def _record_fresh_evidence(self, decision_id, source: str, answer=None):
         """Count confirmations of the held version, after its hold began.
@@ -256,12 +372,19 @@ class SwitchboardService:
             if source == "answer_inbox" and not self._answers_agree(
                     json.loads(hold["answer_json"]), answer):
                 continue
-            ctx_hash = sha256_hex(canonical_json(context))
-            seen = json.loads(hold["seen_contexts_json"])
+            contract = self.scope_contract(hold["category"])
+            if not scope_contract_result(json.loads(hold["scope_json"]), contract)["valid"]:
+                continue
+            ctx_hash = "decision-context-v2:" + sha256_hex(fresh_context_key(
+                context, json.loads(hold["scope_json"]), contract))
+            # Old hashes used the entire arbitrary context. They cannot count
+            # as distinct evidence under the new definition.
+            seen = [key for key in json.loads(hold["seen_contexts_json"])
+                    if key.startswith("decision-context-v2:")]
             if ctx_hash in seen:
                 continue
             seen.append(ctx_hash)
-            fresh = hold["fresh_count"] + 1
+            fresh = len(seen)
             if fresh >= hold["required_m"]:
                 self.store.execute(
                     "UPDATE recalibration_holds SET fresh_count=?, seen_contexts_json=?, status='released',"
@@ -288,7 +411,7 @@ class SwitchboardService:
     def active_rule_versions(self, category):
         rows = self.store.query(
             "SELECT rv.* FROM rule_versions rv JOIN rules r ON r.id=rv.rule_id"
-            " WHERE r.category=? AND r.active_version_id=rv.id AND rv.confirmed_by_human=1", (category,))
+            " WHERE r.category=? AND r.status='active' AND r.active_version_id=rv.id AND rv.confirmed_by_human=1", (category,))
         for r in rows:
             r["_predicate"] = json.loads(r["predicate_json"])
             r["_answer"] = json.loads(r["answer_json"])
@@ -332,8 +455,13 @@ class SwitchboardService:
         scope_result = None
         match_reason = "below_policy"
         match_tier = "none"
+        diagnostics = {}
+        snapshot = None
+        def finish(*args, **kwargs):
+            return self._persist_decision(*args, **kwargs, match_diagnostics=diagnostics)
         if not risk["is_locked"] and not cat["locked"]:
             versions = self.active_rule_versions(req.category)
+            snapshot = (sorted(rv["id"] for rv in versions), canonical_json(self.scope_contract(req.category)))
             candidate = self.ladder.resolve(normalize_text(req.question), req.category, req.intent_type,
                                             versions, context=req.context or {})
         if candidate and candidate.get("blocked_by_scope"):
@@ -341,12 +469,18 @@ class SwitchboardService:
             match_reason = "out_of_scope"
             candidate = None
         elif candidate and candidate.get("ambiguous"):
-            match_reason = "ambiguous_match"
+            match_reason = candidate.get("reason", "ambiguous_match")
             match_tier = candidate["tier"]
+            diagnostics["conflicting_rule_version_ids"] = candidate.get("candidate_rule_ids", [])
             candidate = None
         elif candidate:
             scope_result = candidate.pop("scope_result", None)
             match_tier = candidate["tier"]
+            state = scope_contract_result(candidate["rule_version"]["_scope"], self.scope_contract(req.category))
+            if not state["valid"]:
+                diagnostics["rule_scope"] = state
+                match_reason = "scope_contract_incomplete"
+                candidate = None
 
         with self.store.transaction():
             # A concurrent retry may have completed while matching was in
@@ -359,6 +493,14 @@ class SwitchboardService:
             cat = self.category(req.category)
             risk = classify_risk(req, self.cfg)
             self._validate_parent_receipts(agent, req)
+            if candidate:
+                current = self.store.query(
+                    "SELECT r.active_version_id FROM rules r JOIN rule_versions rv ON rv.id=r.active_version_id "
+                    "WHERE r.category=? AND r.status='active' AND rv.confirmed_by_human=1", (req.category,))
+                current_snapshot = (sorted(rv["active_version_id"] for rv in current),
+                                    canonical_json(self.scope_contract(req.category)))
+                if snapshot != current_snapshot:
+                    candidate, match_reason = None, "rules_changed_during_match"
             qid = new_id()
             self.store.execute(
                 "INSERT INTO questions(id,request_id,agent_id,canonical_hash,question_text,category,intent_type,"
@@ -375,26 +517,26 @@ class SwitchboardService:
             # human. Both writes now commit with their decision and receipt.
             self._register_attention(qid, req, risk)
             if risk["is_locked"] or cat["locked"]:
-                return self._persist_decision(qid, req, cat, mode="deferred", reason="locked",
+                return finish(qid, req, cat, mode="deferred", reason="locked",
                                               tier="none", candidate=None, human=True)
             if scope_result and not scope_result["valid"]:
                 self.store.emit("system", "switchboard", "decision.deferred", "question", qid,
                                 {"reason": "out_of_scope", "scope": scope_result})
             if cat["min_evidence_state"] == "quarantined":
-                return self._persist_decision(qid, req, cat, "deferred", "feedback_integrity_hold",
+                return finish(qid, req, cat, "deferred", "feedback_integrity_hold",
                                               "none", None, True, scope_result)
             stage = cat["stage"]
             if candidate and candidate["rule_version"]["rule_id"] in self.held_rule_ids(req.category):
-                return self._persist_decision(qid, req, cat, "deferred", "recalibration_pending",
+                return finish(qid, req, cat, "deferred", "recalibration_pending",
                                               candidate["tier"], candidate, True, scope_result)
             if stage == "suggest" and candidate and self._away_grant_active(req.category, req.intent_type):
                 stage = "auto"  # scoped grants upgrade suggest only
             if stage == "shadow":
-                return self._persist_decision(qid, req, cat, "shadow", "shadow",
+                return finish(qid, req, cat, "shadow", "shadow",
                                               candidate["tier"] if candidate else "none",
                                               candidate, True, scope_result, effective_stage=stage)
             if stage == "suggest":
-                return self._persist_decision(qid, req, cat, "suggested", "suggest",
+                return finish(qid, req, cat, "suggested", "suggest",
                                               candidate["tier"] if candidate else "none",
                                               candidate, True, scope_result, effective_stage=stage)
             if stage in ("warn", "auto") and candidate and getattr(self.cfg, "risk_gate_mode", "shadow") == "enforce":
@@ -402,18 +544,18 @@ class SwitchboardService:
                 if gate["gate_state"] != "within_target":
                     reason = ("risk_gate_insufficient_evidence" if gate["gate_state"] == "insufficient_evidence"
                               else "risk_gate_exceeded")
-                    return self._persist_decision(qid, req, cat, "deferred", reason,
+                    return finish(qid, req, cat, "deferred", reason,
                                                   candidate["tier"], candidate, True, scope_result,
                                                   effective_stage=stage)
             if stage == "warn" and candidate:
-                return self._persist_decision(qid, req, cat, "warn", "warn_stage",
+                return finish(qid, req, cat, "warn", "warn_stage",
                                               candidate["tier"], candidate, False, scope_result,
                                               effective_stage=stage)
             if stage == "auto" and candidate:
-                return self._persist_decision(qid, req, cat, "auto", "matched_rule",
+                return finish(qid, req, cat, "auto", "matched_rule",
                                               candidate["tier"], candidate, False, scope_result,
                                               effective_stage=stage)
-            return self._persist_decision(qid, req, cat, "deferred", match_reason,
+            return finish(qid, req, cat, "deferred", match_reason,
                                       match_tier, candidate, True, scope_result,
                                       effective_stage=stage)
 
@@ -485,13 +627,16 @@ class SwitchboardService:
         }
 
     def _persist_decision(self, qid, req, cat, mode, reason, tier, candidate, human,
-                          scope_result=None, effective_stage=None):
+                          scope_result=None, effective_stage=None, match_diagnostics=None):
         # Atomicity guard: re-check the candidate version is still active at persistence time.
         if candidate:
-            active = self.store.query_one("SELECT active_version_id FROM rules WHERE id=?",
+            active = self.store.query_one("SELECT active_version_id,status FROM rules WHERE id=?",
                                           (candidate["rule_version"]["rule_id"],))
-            if not active or active["active_version_id"] != candidate["rule_version"]["id"]:
+            if not active or active["status"] != "active" or active["active_version_id"] != candidate["rule_version"]["id"]:
                 mode, reason, candidate = "deferred", "stale_rule_version", None
+                human = True
+            elif not scope_contract_result(candidate["rule_version"]["_scope"], self.scope_contract(req.category))["valid"]:
+                mode, reason, candidate, human = "deferred", "scope_contract_incomplete", None, True
         did = new_id()
         answer = candidate["rule_version"]["_answer"] if (candidate and mode in ("auto", "warn")) else None
         # Keep enough structured, privacy-minimized context to evaluate future
@@ -522,6 +667,8 @@ class SwitchboardService:
             "decision_mode": mode,
             "reason_code": reason,
             "human_required": bool(human),
+            "scope_contract": self.scope_contract(req.category),
+            "match_diagnostics": match_diagnostics or {},
         }
         self.store.execute(
             "INSERT INTO decisions(id,question_id,mode,answer_json,reason_code,matcher_tier,score,score_kind,"
@@ -598,6 +745,7 @@ class SwitchboardService:
                           if dec["mode"] in ("auto", "warn")
                           or dec["reason_code"].startswith("risk_gate_") else None),
             "explanation": f"{dec['reason_code']} via {dec['matcher_tier']}",
+            "match_diagnostics": json.loads(dec.get("policy_trace_json") or "{}").get("match_diagnostics", {}),
         }
         return resp
 
@@ -626,7 +774,10 @@ class SwitchboardService:
     _DEBRIEF_REASONS = {
         "locked": "Locked class — only you can answer this.",
         "quarantine": "A rule tried to answer outside its scope, so it was paused and the question came to you.",
-        "recalibration_pending": "This category is recalibrating after a correction, so the rule is paused.",
+        "recalibration_pending": "This rule is paused until fresh confirmations support its correction.",
+        "conflicting_rules": "Equally applicable rules disagree. You decide which answer applies.",
+        "scope_contract_incomplete": "This rule is missing boundaries required by its category. Repair the rule before automatic reuse.",
+        "rules_changed_during_match": "Your rules changed while this question was being checked. Review it against the latest rules.",
         "risk_gate_insufficient_evidence": "The answer is paused until this category has enough confirmed evidence.",
         "risk_gate_exceeded": "The current error estimate is above this category's configured risk target.",
         "shadow": "Shadow stage: the rule would have answered, but this category only watches for now.",
@@ -1093,11 +1244,20 @@ class SwitchboardService:
             keywords = [k.strip() for k in (save_rule.get("keywords") or []) if str(k).strip()]
             if keywords:
                 predicate = {"keywords": keywords, "example_question": q["question_text"]}
+                if q["intent_type"] != "unknown":
+                    predicate["intent_type"] = q["intent_type"]
                 scope = save_rule.get("scope") or {}
-                # Supersede an existing rule with identical keywords in this category, else create.
+                # A choice for another project is a separate rule, not a
+                # correction that silently erases the first project's choice.
                 existing = None
                 for row in self.list_rules_human(q["category"]):
-                    if json.loads(row["predicate_json"]).get("keywords") == keywords:
+                    prior = json.loads(row["predicate_json"])
+                    prior_scope = json.loads(row["scope_json"])
+                    if (row["status"] == "active"
+                            and normalized_predicate(prior).get("keywords") == normalized_predicate(predicate).get("keywords")
+                            and prior.get("intent_type") == predicate.get("intent_type")
+                            and scope_relation(prior_scope, scope) == "equal"
+                            and bool(prior_scope.get("global")) == bool(scope.get("global"))):
                         existing = row["rule_id"]
                         break
                 if existing:
@@ -1339,7 +1499,7 @@ class SwitchboardService:
                          "previous_status": prior_status, "status": status}, evidence_class="agent_asserted")
         return {"dependency_id": dependency_id, "coverage": "partial_agent_reported", "status": status}
 
-    def blast_radius(self, rule_id):
+    def blast_radius(self, rule_id, *, proposed=None):
         active_row = self.store.query_one(
             "SELECT rv.* FROM rules r JOIN rule_versions rv ON rv.id=r.active_version_id WHERE r.id=?",
             (rule_id,))
@@ -1350,6 +1510,8 @@ class SwitchboardService:
         active["_predicate"] = json.loads(active["predicate_json"])
         active["_answer"] = json.loads(active["answer_json"])
         active["_scope"] = json.loads(active["scope_json"])
+        if proposed is not None:
+            active.update(proposed)
         ph = ",".join("?" * len(versions))
         uses = self.store.query(
             f"SELECT DISTINCT d.id as decision_id, d.mode, d.answer_json, q.question_text, q.category,"

@@ -168,8 +168,8 @@ export function InboxPanel({
       );
       setSheetOpen(null);
       swishOut(item, "allow", onRefresh);
-    } catch {
-      onAnswered?.("Switchboard refused that rule (locked or unscoped categories can't get one). Nothing was saved.");
+    } catch (error) {
+      onAnswered?.(error instanceof Error ? `${error.message}. You can answer once here or set all boundaries under Agents & rules.` : "Could not save that rule.");
       onRefresh();
     }
   };

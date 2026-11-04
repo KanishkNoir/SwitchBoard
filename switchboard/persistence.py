@@ -65,6 +65,10 @@ CREATE TABLE IF NOT EXISTS rule_versions(
   scope_json TEXT NOT NULL, source_type TEXT NOT NULL, evidence_ids_json TEXT NOT NULL DEFAULT '[]',
   confirmed_by_human INTEGER NOT NULL DEFAULT 0, valid_from TEXT NOT NULL, valid_until TEXT,
   supersedes_version_id TEXT, created_at TEXT NOT NULL, UNIQUE(rule_id, version_number));
+CREATE TABLE IF NOT EXISTS category_scope_contracts(
+  category TEXT PRIMARY KEY, required_fields_json TEXT NOT NULL,
+  evidence_fields_json TEXT NOT NULL, allow_global INTEGER NOT NULL DEFAULT 0,
+  updated_by TEXT NOT NULL, updated_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS decisions(
   id TEXT PRIMARY KEY, question_id TEXT NOT NULL REFERENCES questions(id),
   mode TEXT NOT NULL, answer_json TEXT, reason_code TEXT NOT NULL, matcher_tier TEXT NOT NULL,

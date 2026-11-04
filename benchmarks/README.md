@@ -2,13 +2,13 @@
 
 This benchmark asks a narrow question: **when can the decision service reuse a saved preference, when must it ask, and which recorded work needs review after a correction?** It exercises the real service, SQLite ledger, matcher, holds, receipts, dependency records and evidence quarantine. It does not run Claude, Codex, Muse Code or other native assistants.
 
-The [generated results](RESULTS.v1.md), [full sanitized traces](results.v1.json), [frozen input](scenarios.v1.json) and [runner](../switchboard/benchmark.py) are checked in together. Failures remain in the report.
+The [current generated results](RESULTS.policy-v2.md), [full sanitized traces](results.policy-v2.json), [frozen input](scenarios.v1.json) and [runner](../switchboard/benchmark.py) are checked in together. Failures remain in the report. The original [v1 report](RESULTS.v1.md) and [v1 traces](results.v1.json) are preserved as historical measurements at commit `7c4913f`.
 
 ## Dataset and protocol
 
 Version 1 contains **40 episodes and 220 questions per arm**: five domains (reports, coding, scheduling, writing and charts) crossed with eight condition families. These are authored, correlated fixtures, not 40 independent users, a representative workload, or a held-out natural-language dataset. Each domain changes the question, category, preference values and workspace; conditions intentionally repeat. The [authoring script](build_dataset.py) expands templates into the frozen JSON; the runner reads that JSON rather than generating expectations at runtime.
 
-The input was frozen before the first full measurement. Expected answers, must-review boundaries and work ID/status expectations are authored independently of the service's output. Scorer fixes and explicit negative controls are included; no production policy was changed to improve the score.
+The input was frozen before the first full measurement. Expected answers, must-review boundaries and work ID/status expectations are authored independently of the service's output. The original input and output have not been edited for subsequent policy changes. Current results use a new source fingerprint.
 
 | Family | Questions | What it checks |
 |---|---:|---|
@@ -45,7 +45,9 @@ The source fingerprint hashes sorted `switchboard/**/*.py` relative paths and th
 
 ## Findings and limits
 
-In v1, full Switchboard makes **15 wrong automatic decisions versus 30 with immediate resume**, while requiring **100 reviews versus 55**, out of 220 questions. Always-ask makes zero wrong automatic decisions with 220 reviews. Full Switchboard finds **15/15** affected recorded work IDs with zero false alarms; omitting dependency recording finds **0/15**. Removing scope adds 20 boundary violations.
+On the frozen v1 dataset with the current policy, full Switchboard makes **15 wrong automatic decisions versus 30 with immediate resume**, while requiring **105 reviews versus 55**, out of 220 questions. Always-ask makes zero wrong automatic decisions with 220 reviews. Full Switchboard finds **15/15** affected recorded work IDs with zero false alarms; omitting dependency recording finds **0/15**. Removing scope adds 20 boundary violations.
+
+The historical implementation required 100 reviews and produced 105 correct automatic reuses; the current implementation requires 105 reviews and produces 100 correct automatic reuses. That additional cost is deliberate: v1's evidence-integrity cases vary task IDs, which no longer qualify as distinct meaningful contexts. The fixture family still delivers its answers through simulated review, but automation remains on hold. Category contracts are not configured in this dataset, so it cannot show their benefit. Dedicated [policy regression tests](../tests/test_rule_policy.py) cover those new behaviors. This report does not claim an improved aggregate error score.
 
 All 15 full-service errors occur in the deliberately adverse negative controls: five scope boundary violations caused by incomplete rule authoring and ten stale values after unannounced preference changes. Both scoped automatic arms fail these controls. Holds protect against the supplied noisy corrections here; they cannot invent a missing boundary or discover an unreported preference change. These are product limits, not passing cases excluded from the headline.
 
@@ -56,12 +58,12 @@ Do not infer population error rates, statistical significance, assistant complia
 From the repository root with Python 3.12+ and project dependencies installed:
 
 ```powershell
-uv run python -m switchboard.benchmark --output benchmarks/results.v1.json --markdown benchmarks/RESULTS.v1.md
+uv run python -m switchboard.benchmark --output .tmp/results-current.json --markdown .tmp/RESULTS-current.md
 uv run pytest tests/test_benchmark.py tests/test_evaluation.py tests/test_harness2.py tests/test_stress.py -q
 $env:SWITCHBOARD_IT = '1'
 uv run pytest -q
 ```
 
-To inspect rather than overwrite the checked-in report, use paths under `.tmp/` for both outputs. `build_dataset.py` is for reviewing fixture authorship; it is not needed to run the frozen suite. Changing cases or expectations requires a new dataset version and a fresh full run.
+These output paths preserve both checked-in reports. To reproduce the historical implementation, check out commit `7c4913f` in a separate worktree and run its version of the runner. `build_dataset.py` is for reviewing fixture authorship; it is not needed to run the frozen suite. Changing cases or expectations requires a new dataset version and a fresh full run.
 
 The legacy [replay evaluator](../switchboard/evaluation.py) remains for API compatibility. Its impact scorer now records real work edges and matches affected IDs; its dependency ablation really omits those edges. Every legacy arm now receives the same oracle on deferral. The README uses this versioned benchmark instead of the old 11-question table.

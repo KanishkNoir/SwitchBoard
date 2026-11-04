@@ -274,7 +274,8 @@ class AskIn(BaseModel):
 API_CAPABILITIES = ["inbox", "steering", "debrief", "onboarding", "taste",
                     "simulation", "passport", "notices", "resolve", "action_gate",
                     "steering_suggestions", "steering_summary",
-                    "steering_written_requests", "simulation_semantic_steering", "connection_status"]
+                    "steering_written_requests", "simulation_semantic_steering", "connection_status",
+                    "rule_scope_contracts", "rule_correction_preview", "rule_hold_review"]
 
 
 @app.get("/health")
@@ -688,15 +689,21 @@ def revalidate(decision_id: str):
 
 @app.post("/rules")
 def create_rule(body: dict):
-    return svc.create_rule(body["category"], body.get("predicate", {}), body.get("answer", {}),
-                           scope=body.get("scope"), source_type=body.get("source_type", "explicit_edit"))
+    try:
+        return svc.create_rule(body["category"], body.get("predicate", {}), body.get("answer", {}),
+                               scope=body.get("scope"), source_type=body.get("source_type", "explicit_edit"))
+    except SwitchboardError as e:
+        return err(e)
+    except KeyError:
+        return JSONResponse(status_code=400, content={"error": "INVALID_SCHEMA"})
 
 
 @app.post("/rules/{rule_id}/supersede")
 def supersede(rule_id: str, body: dict):
     try:
         return svc.supersede_rule(rule_id, new_answer=body.get("answer"),
-                                  new_scope=body.get("scope"), new_predicate=body.get("predicate"))
+                                  new_scope=body.get("scope"), new_predicate=body.get("predicate"),
+                                  expected_version_id=body.get("expected_version_id"))
     except SwitchboardError as e:
         return err(e)
 
@@ -707,6 +714,41 @@ def blast(rule_id: str):
         return svc.blast_radius(rule_id)
     except SwitchboardError as e:
         return err(e)
+
+
+@app.post("/rules/{rule_id}/preview")
+def preview_rule_update(rule_id: str, body: dict):
+    try:
+        return svc.preview_rule_update(rule_id, new_answer=body.get("answer"),
+                                       new_scope=body.get("scope"), new_predicate=body.get("predicate"),
+                                       expected_version_id=body.get("expected_version_id"))
+    except SwitchboardError as e:
+        return err(e)
+
+
+@app.post("/rules/{rule_id}/review-hold")
+def review_rule_hold(rule_id: str, body: dict):
+    try:
+        return svc.review_rule_hold(rule_id, body.get("expected_version_id"), confirmed=body.get("confirmed", False))
+    except SwitchboardError as e:
+        return err(e)
+
+
+@app.get("/settings/{category}/scope-contract")
+def scope_contract(category: str):
+    return svc.scope_contract(category)
+
+
+@app.put("/settings/{category}/scope-contract")
+def set_scope_contract(category: str, body: dict):
+    try:
+        return svc.set_scope_contract(category, body["required_fields"],
+                                      allow_global=body.get("allow_global", False),
+                                      evidence_fields=body.get("evidence_fields"))
+    except SwitchboardError as e:
+        return err(e)
+    except KeyError:
+        return JSONResponse(status_code=400, content={"error": "INVALID_SCHEMA"})
 
 
 @app.put("/settings/{category}")

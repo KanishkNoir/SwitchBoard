@@ -110,6 +110,7 @@ def test_agent_claim_flood_does_not_release_hold_or_count_as_gold():
     assert counts["agent_claims"] == 50
     assert counts["agent_claims_eligible"] == 0
     assert counts["evidence_checks"] == counts["evidence_checks_passed"] == 2
-    # One semantic correction requires three DISTINCT fresh contexts, not repeated claims.
-    assert counts["reviews"] == 4
-    assert result["trace"][-1]["decision"] == "answer"
+    # v1 uses only different task IDs to claim fresh contexts. Current policy
+    # deliberately rejects this incidental metadata; keep the frozen data.
+    assert counts["reviews"] == 5
+    assert result["trace"][-1]["decision"] == "defer"

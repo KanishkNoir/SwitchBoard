@@ -74,7 +74,10 @@ def evaluate_scope(scope: dict, context: dict) -> dict:
             unknown = True
             continue
         actual = context[key]
-        ok = actual in expected if isinstance(expected, list) else actual == expected
+        # JSON booleans and numbers are distinct policy values (Python's
+        # True == 1 must not accidentally satisfy a boundary).
+        choices = expected if isinstance(expected, list) else [expected]
+        ok = any(canonical_json(actual) == canonical_json(choice) for choice in choices)
         details[key] = "pass" if ok else "fail"
         if not ok:
             return {"valid": False, "result": "fail", "details": details}
