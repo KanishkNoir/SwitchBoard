@@ -26,7 +26,7 @@ https://github.com/user-attachments/assets/679017fc-f284-4617-9fe5-bbdb8fddfdd2
 
 **2:59 · narrated product walkthrough.** [Original 1080p MP4](https://github.com/KanishkNoir/SwitchBoard/releases/download/hackathon-demo-2026-11-04/Switchboard-Hackathon-Workshop.mp4) · [Subtitles](https://github.com/KanishkNoir/SwitchBoard/releases/download/hackathon-demo-2026-11-04/Switchboard-Hackathon-Workshop.srt) · [Video verification](https://github.com/KanishkNoir/SwitchBoard/releases/download/hackathon-demo-2026-11-04/verification-workshop.json)
 
-The walkthrough uses the actual interface with a clearly labelled illustrative workshop scenario. The historical ChatGPT–phone connection test is identified separately. It is not presented as a newly recorded native cross-agent correction run. [Demo and evidence notes](assets/readme/DEMO.md).
+The walkthrough uses the actual interface with clearly labelled example data. The historical ChatGPT–phone connection test is identified separately. It is not presented as a newly recorded native cross-agent correction run. [Demo and evidence notes](assets/readme/DEMO.md).
 
 ## Supported assistants
 
@@ -49,18 +49,6 @@ Keep the assistants you already use. Connect their decisions through Switchboard
 
 Authenticated connections have been checked across these eight client families. Setup, account availability and enforcement vary by client. Claude Code and OpenCode have verified project action gates; the other clients rely on their configured ask-first instructions. See the [connection and enforcement matrix](#agent-support-today) and [setup report](integrations/CLIENT_SUPPORT.md).
 
-## One everyday example
-
-You're organizing a **local photo workshop**. Muse Code builds the signup page; Claude drafts the invitation. Both need the session time.
-
-1. **Save the answer once.** Choose Saturday at 10 AM, limit it to this workshop's public drafts, and deliberately enable reuse. Both agents can consult the same saved answer, with a separate record of each use.
-2. **Keep it inside its limits.** A different event cannot inherit that workshop's answer. Switchboard asks you when no eligible answer applies.
-3. **Change your mind.** The session moves to Sunday at 11 AM. Update the answer and see recorded work that used Saturday's time: the unfinished signup page must check again; the invitation draft needs review before you send it.
-4. **Handle the next question from your phone.** Muse Code asks whether the signup draft should include a phone number. Focus shows the question and context. Answer “Use email only,” or leave it for later.
-5. **Guide the draft.** Ask for a shorter invitation, review the revised version with the new time, and approve it separately.
-
-The useful loop is **a shared human decision, checked for each use, with a trail when it changes**. Corrections identify recorded dependencies; they do not undo completed outside actions or automatically rewrite every agent's work.
-
 ## What Switchboard does
 
 | Feature | What it helps you do |
@@ -80,8 +68,8 @@ Compatible unresolved questions can share an inbox answer only when their intent
 <table>
   <tr><th>Operator window</th><th>Focus mode</th></tr>
   <tr>
-    <td width="72%"><img src="assets/readme/operator-window.png" alt="Actual Switchboard operator window with illustrative workshop questions and autonomy information" width="720" /></td>
-    <td align="center"><img src="assets/readme/focus-mode.png" alt="Actual Focus interface showing an illustrative workshop contact-detail question" width="235" /></td>
+    <td width="72%"><img src="assets/readme/operator-window.png" alt="Actual Switchboard operator window with example questions and autonomy information" width="720" /></td>
+    <td align="center"><img src="assets/readme/focus-mode.png" alt="Actual Focus interface showing a contextual decision with example data" width="235" /></td>
   </tr>
 </table>
 
