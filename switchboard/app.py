@@ -5,7 +5,7 @@ import re
 from typing import Literal
 
 from fastapi import FastAPI, Header, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
 from .agents import apply_steering, tradeoff_planner_question, validate_decision_payload, visual_scout_question
@@ -239,7 +239,7 @@ def cached_read(key: str, params: str, compute):
 def cached_response(request: Request, key: str, params: str, compute):
     body, etag, hit = cached_read(key, params, compute)
     if request.headers.get("if-none-match") == etag:
-        return JSONResponse(status_code=304, content=None, headers={"ETag": etag})
+        return Response(status_code=304, headers={"ETag": etag})
     return JSONResponse(content=body, headers={"ETag": etag, "X-Cache": "HIT" if hit else "MISS"})
 
 
