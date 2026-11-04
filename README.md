@@ -1,49 +1,100 @@
-# Switchboard
+<p align="center">
+  <img src="assets/readme/switchboard-mark.svg" width="72" height="72" alt="Switchboard mark" />
+</p>
 
-### One person. Many agents. A shared place for decisions.
+<h1 align="center">Switchboard</h1>
 
-Your coding agent asks which environment to use. Your research agent asks about your budget. Your next agent asks the same questions again. Each conversation starts from scratch, while yesterday's answers quietly become today's assumptions.
+<p align="center"><strong>Answer once. Keep your agents aligned.</strong></p>
 
-**Switchboard is your autonomy layer across compatible AI agents.** Agents check it before interrupting you. It returns an existing answer when that answer still applies, brings unresolved questions to one inbox, and tracks what depended on each decision.
+<p align="center">A shared place for your AI assistants to check your decisions,<br />stay within your limits, and track what needs review when you change your mind.</p>
 
-The goal is fewer interruptions, with you in control of what agents can reuse.
+<p align="center">
+  <a href="#watch-the-demo">Watch the demo</a> ·
+  <a href="#supported-assistants">Supported assistants</a> ·
+  <a href="#what-switchboard-does">Features</a> ·
+  <a href="#run-locally">Run locally</a> ·
+  <a href="#architecture">Architecture</a>
+</p>
 
-Built for the **Meta × Cerebral Valley hackathon**, with Meta models through **Baseten** and deployment on **Modal**.
+Your assistants can build, write and research in parallel. You still carry the decisions between them: repeating details, answering questions and remembering who needs an update.
 
-## Answer once. Keep the boundaries.
+**Switchboard is your autonomy layer across compatible agents.** Connected agents check for a saved answer before asking you. Answers are reused only where your configured rules allow it. Questions that still need your judgment arrive in one operator window.
 
-Imagine you tell Claude Code: “Use staging for this project.”
+## Watch the demo
 
-1. **A second agent asks.** Codex can reuse that answer when the project, environment, and category policy permit it. It gets a receipt explaining which rule applied.
-2. **The context changes.** A production request cannot inherit the staging answer just because its wording is similar. Missing required context also prevents reuse.
-3. **You change your mind.** Switchboard versions the rule, shows the decisions that used it, and flags affected pending work for revalidation. The changed rule enters a recalibration hold; unrelated rules can keep working.
-4. **An agent says “it worked.”** That report is recorded as an agent claim. It cannot stand in for your confirmation or earn the system more autonomy.
+https://github.com/user-attachments/assets/679017fc-f284-4617-9fe5-bbdb8fddfdd2
 
-That is the product's promise: **a decision can travel between agents without losing its scope, history, or owner.**
+**2:59 · narrated product walkthrough.** [Original 1080p MP4](https://github.com/KanishkNoir/SwitchBoard/releases/download/hackathon-demo-2026-11-04/Switchboard-Hackathon-Workshop.mp4) · [Subtitles](https://github.com/KanishkNoir/SwitchBoard/releases/download/hackathon-demo-2026-11-04/Switchboard-Hackathon-Workshop.srt) · [Video verification](https://github.com/KanishkNoir/SwitchBoard/releases/download/hackathon-demo-2026-11-04/verification-workshop.json)
 
-```mermaid
-flowchart LR
-    A[Codex] --> S[Switchboard]
-    B[Claude Code] --> S
-    C[Other compatible agents] --> S
-    S -->|Current answer applies: return a receipt| A
-    S -->|Needs your judgment| I[One decision inbox]
-    I --> Y[You]
-    Y -->|Answer or correct| S
-```
+The walkthrough uses the actual interface with a clearly labelled illustrative workshop scenario. The historical ChatGPT–phone connection test is identified separately. It is not presented as a newly recorded native cross-agent correction run. [Demo and evidence notes](assets/readme/DEMO.md).
 
-## What you get
+## Supported assistants
 
-| Capability | What it means in daily use |
+Keep the assistants you already use. Connect their decisions through Switchboard.
+
+<table>
+  <tr>
+    <td align="center" width="25%"><img src="assets/readme/assistants/meta.svg" width="76" height="44" alt="Meta mark for Muse Code" /><br /><strong>Muse Code</strong><br /><sub>Meta coding agent</sub></td>
+    <td align="center" width="25%"><img src="assets/readme/assistants/openai.png" width="44" height="44" alt="OpenAI mark for Codex" /><br /><strong>Codex</strong><br /><sub>Desktop · CLI</sub></td>
+    <td align="center" width="25%"><img src="assets/readme/assistants/claude.png" width="44" height="44" alt="Claude mark for Claude Code" /><br /><strong>Claude Code</strong><br /><sub>CLI · extension</sub></td>
+    <td align="center" width="25%"><img src="assets/readme/assistants/opencode.png" width="44" height="44" alt="OpenCode icon" /><br /><strong>OpenCode</strong><br /><sub>Coding agent</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="assets/readme/assistants/hermes.png" width="44" height="44" alt="Hermes icon" /><br /><strong>Hermes</strong><br /><sub>Agent harness</sub></td>
+    <td align="center"><img src="assets/readme/assistants/claude.png" width="44" height="44" alt="Claude mark for Claude Desktop" /><br /><strong>Claude Desktop</strong><br /><sub>Desktop assistant</sub></td>
+    <td align="center"><img src="assets/readme/assistants/openai.png" width="44" height="44" alt="OpenAI mark for ChatGPT" /><br /><strong>ChatGPT</strong><br /><sub>Account · web · mobile</sub></td>
+    <td align="center"><img src="assets/readme/assistants/claude.png" width="44" height="44" alt="Claude mark" /><br /><strong>Claude</strong><br /><sub>Account · web · mobile</sub></td>
+  </tr>
+</table>
+
+Authenticated connections have been checked across these eight client families. Setup, account availability and enforcement vary by client. Claude Code and OpenCode have verified project action gates; the other clients rely on their configured ask-first instructions. See the [connection and enforcement matrix](#agent-support-today) and [setup report](integrations/CLIENT_SUPPORT.md).
+
+## One everyday example
+
+You're organizing a **local photo workshop**. Muse Code builds the signup page; Claude drafts the invitation. Both need the session time.
+
+1. **Save the answer once.** Choose Saturday at 10 AM, limit it to this workshop's public drafts, and deliberately enable reuse. Both agents can consult the same saved answer, with a separate record of each use.
+2. **Keep it inside its limits.** A different event cannot inherit that workshop's answer. Switchboard asks you when no eligible answer applies.
+3. **Change your mind.** The session moves to Sunday at 11 AM. Update the answer and see recorded work that used Saturday's time: the unfinished signup page must check again; the invitation draft needs review before you send it.
+4. **Handle the next question from your phone.** Muse Code asks whether the signup draft should include a phone number. Focus shows the question and context. Answer “Use email only,” or leave it for later.
+5. **Guide the draft.** Ask for a shorter invitation, review the revised version with the new time, and approve it separately.
+
+The useful loop is **a shared human decision, checked for each use, with a trail when it changes**. Corrections identify recorded dependencies; they do not undo completed outside actions or automatically rewrite every agent's work.
+
+## What Switchboard does
+
+| Feature | What it helps you do |
 |---|---|
-| **A shared inbox** | Compatible unresolved questions can be grouped so several waiting agents receive one human answer. |
-| **Scoped rules** | Project, environment, intent, and other required context determine where an answer applies. |
-| **Decision receipts** | See why an answer was returned, the rule version behind it, and recorded downstream uses. |
-| **Corrections with impact tracking** | See which earlier decisions relied on a superseded rule and which work needs another look. |
-| **Visible autonomy** | An Autonomy Passport shows each category's stage, evidence, holds, and limits. |
-| **Proposal steering** | Ask for a cheaper, simpler, or different direction without treating that gesture as authorization. |
+| **Saved answers with limits** | Reuse an answer for matching work in the right project, environment and context. |
+| **One operator window** | See what needs you, manage connected agents and answers, and understand why a decision was used. |
+| **Correction impact** | Find recorded work that relied on an old answer and see what needs another check or review. |
+| **Focus on your phone** | Handle one contextual decision at a time with deliberate answer buttons and a proposal lane. “Later” keeps it pending. |
+| **Steering and review** | Request a simpler or different draft, inspect its revision, and approve separately. |
+| **Autonomy Passport** | Inspect the current category stage, evidence, holds and limits before deciding what may run on its own. |
+| **Decision receipts** | Trace an answer to its rule version and recorded downstream uses. Agent-reported success stays separate from human confirmation. |
 
-The intended impact is fewer repeated interruptions, fewer stale assumptions, and corrections you can follow through the work. Those outcomes are what the evaluation measures; they are not assumed from tool connectivity alone.
+Compatible unresolved questions can share an inbox answer only when their intent, options, context, risk and consequences are compatible. A one-time Focus answer does not silently become a standing rule.
+
+## At your desk. On your phone.
+
+<table>
+  <tr><th>Operator window</th><th>Focus mode</th></tr>
+  <tr>
+    <td width="72%"><img src="assets/readme/operator-window.png" alt="Actual Switchboard operator window with illustrative workshop questions and autonomy information" width="720" /></td>
+    <td align="center"><img src="assets/readme/focus-mode.png" alt="Actual Focus interface showing an illustrative workshop contact-detail question" width="235" /></td>
+  </tr>
+</table>
+
+*Actual interface, isolated example data. Focus is the mobile-friendly view of the same decision inbox.*
+
+## Why this problem matters
+
+- **Supervision takes attention.** In BCG's study of 1,488 full-time US workers, 14% of the AI-user subgroup reported fatigue from excessive AI use or oversight. This is self-reported context for the problem, not a clinical diagnosis or a Switchboard result. [BCG, 2026](https://www.bcg.com/publications/2026/ai-for-ceos).
+- **Oversight spans the whole workflow.** Exploratory interviews with 17 developers described controls, planning, monitoring and later review. That motivates an operator experience covering decisions, steering and corrections. The small qualitative study did not evaluate Switchboard. [Dhanorkar, Passi and Vorvoreanu, 2026 preprint](https://arxiv.org/abs/2606.05391).
+
+Switchboard aims to reduce repeated interruptions and stale assumptions while preserving human control. Time saved, fatigue reduction and willingness to pay still need real-user validation.
+
+Built for the **Meta × Cerebral Valley hackathon**. **Meta models via Baseten** provide optional eligible-rule matching; **Modal** hosts the shared hub and supports other model access. Your confirmed rules remain the authority.
 
 ## How a decision earns an answer
 
@@ -95,7 +146,7 @@ Visual Scout can ground a question in an object selected from an image. Concept 
 
 ## Agent support today
 
-The November 2026 integration pass tested actual MCP calls and authenticated identities, including launches from an unrelated working directory.
+The 4 November 2026 integration pass tested actual MCP calls and authenticated identities, including launches from an unrelated working directory. The logo overview above identifies supported client families; this matrix distinguishes connection evidence from enforcement.
 
 | Client | Verified connection | Automatic Switchboard action gate |
 |---|---|---|
@@ -105,7 +156,8 @@ The November 2026 integration pass tested actual MCP calls and authenticated ide
 | Muse Code | Authenticated calls from the saved user configuration | Ask-first instructions |
 | Claude Desktop | Authenticated calls from both Windows configuration locations | Ask-first instructions |
 | Hermes | Native Windows installation, native MCP discovery, authenticated calls | Ask-first instructions |
-| Claude / ChatGPT accounts and mobile review | Account connectors linked; live MCP calls and phone Focus round trip verified; native app checks confirmed by the user | Ask-first instructions |
+| ChatGPT account / web / mobile | Account connector linked; live calls and phone Focus round trip verified; native app check confirmed by the user | Ask-first instructions |
+| Claude account / web / mobile | Account connector linked; live calls verified; native app check confirmed by the user | Ask-first instructions |
 
 MCP gives an agent access to Switchboard. Enforcing every tool call requires a harness-specific gate. The installed Claude Code and OpenCode gates apply in this project; other clients must follow their instructions. Existing sessions need an MCP reload or restart after configuration changes.
 
