@@ -9,6 +9,7 @@
 <p align="center">A shared place for your AI assistants to check your decisions,<br />stay within your limits, and track what needs review when you change your mind.</p>
 
 <p align="center">
+  <a href="https://cogni-noir--switchboard-playground-web.us-east.modal.run">Try the public playground</a> ·
   <a href="#watch-the-demo">Watch the demo</a> ·
   <a href="#supported-assistants">Supported assistants</a> ·
   <a href="#what-switchboard-does">Features</a> ·
@@ -19,6 +20,8 @@
 Your assistants can build, write and research in parallel. You still carry the decisions between them: repeating details, answering questions and remembering who needs an update.
 
 **Switchboard is your autonomy layer across compatible agents.** Connected agents check for a saved answer before asking you. Answers are reused only where your configured rules allow it. Questions that still need your judgment arrive in one operator window.
+
+**[Try Switchboard — no login needed](https://cogni-noir--switchboard-playground-web.us-east.modal.run).** Explore shared answers, project boundaries, correction previews, Focus and proposal steering with sample agents. Each visitor gets a disposable workspace with its own reset. Model calls and external connections are off; use sample data. [Playground details and verification](integrations/PUBLIC_SANDBOX.md).
 
 ## Watch the demo
 
