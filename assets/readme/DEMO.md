@@ -1,14 +1,16 @@
 # Demo and evidence notes
 
-The 2:59 demo follows an explicitly introduced illustrative photography-workshop use case in the actual Switchboard interface. It includes research context, eight assistant families, a saved session time, correction impact, Focus on a phone, steering and visible autonomy limits.
+The updated 2:59 demo keeps the researched supervision problem, eight assistant families, operator window, Focus, steering, calm audio and user authority. An introduced photography-workshop example connects the features. New footage shows category boundaries, conflicting rules, correction previews, recorded dependencies and a hold on only the changed rule.
 
-- The workshop captures use isolated local fixtures. No production rules or human calibration labels were created for this walkthrough.
-- A historical ChatGPT–phone Focus connection test is separately identified. The film does not claim a newly recorded native cross-agent correction run.
+- Current policy captures use the actual backend and built UI with isolated local example data from build `92bf94e`. No production rules or real human calibration labels were created. The live Modal hub subsequently moved to `c150a3b`, which also fixes empty HTTP 304 responses.
+- A historical ChatGPT–phone Focus connection test is separately identified. The film does not claim a newly recorded native cross-agent correction run or universal assistant compliance.
 - Corrections cover recorded dependencies. Completed outside work is not undone; an agent must prepare any revised draft.
-- The background is a new original quiet sustained-chord bed without the earlier repeating pulse or bright-note motif.
-- Original export: 179.0 seconds, 1920×1080, 30 fps, H.264/AAC, 5,370 rendered frames; full decode and sampled motion checks passed. Audio peak -1.2 dBFS. The verification report and subtitles accompany the release.
-- The inline preview is a smaller 720p encoding for GitHub playback. The original 1080p export is provided separately.
+- The animated graph uses [the current checked-in benchmark](../../benchmarks/RESULTS.policy-v2.md): 40 correlated synthetic episodes, 220 questions per strategy, local matching with Meta off. Always-ask: 0 wrong automatic decisions / 220 reviews. Immediate reuse: 30 / 55. Switchboard: 15 / 105. Immediate reuse is the same service with recalibration holds disabled. These are not real-user results, a competitor benchmark or a production guarantee. Category requirements were not configured in this dataset.
+- A separate fresh Baseten check exercises the optional Meta branch using `meta-models/muse-spark-open-1026`. A differently worded arrival-time question selects the saved Sunday 11 AM rule; a different project is rejected before model access. This uses synthetic candidate rules and a forced local threshold, with no production writes, native agent action or accuracy claim.
+- The closing identifies hackathon contributions and the public October 29–November 4 commit history. The [official participant guide](https://cerebralvalley.ai/e/meta-ai-developer-hackathon/details) informed the cut; no judging outcome or award eligibility is claimed.
+- The original quiet sustained-chord bed remains, without the earlier repeating pulse or bright-note motif.
+- Export: 179.0 seconds, 1920×1080, 30 fps, H.264/AAC, 5,370 frames. Full decode and sampled motion checks passed. Audio peak: -1.2 dBFS. A smaller 720p preview, captions, verification report, script and judging alignment notes accompany the release. Remotion production files remain local.
 
-[Original video](https://github.com/KanishkNoir/SwitchBoard/releases/download/hackathon-demo-2026-11-04/Switchboard-Hackathon-Workshop.mp4) · [Subtitles](https://github.com/KanishkNoir/SwitchBoard/releases/download/hackathon-demo-2026-11-04/Switchboard-Hackathon-Workshop.srt) · [Verification](https://github.com/KanishkNoir/SwitchBoard/releases/download/hackathon-demo-2026-11-04/verification-workshop.json)
+[Updated video and evidence](https://github.com/KanishkNoir/SwitchBoard/releases/tag/hackathon-final-2026-11-04) · [1080p MP4](https://github.com/KanishkNoir/SwitchBoard/releases/download/hackathon-final-2026-11-04/Switchboard-Hackathon-Policy-Benchmark.mp4) · [Subtitles](https://github.com/KanishkNoir/SwitchBoard/releases/download/hackathon-final-2026-11-04/Switchboard-Hackathon-Policy-Benchmark.srt) · [Verification](https://github.com/KanishkNoir/SwitchBoard/releases/download/hackathon-final-2026-11-04/verification-policy-benchmark.json)
 
-The research context is sourced in the main README. It is not evidence of measured product savings or market demand.
+The [previous cut](https://github.com/KanishkNoir/SwitchBoard/releases/tag/hackathon-demo-2026-11-04) remains available. Research context is sourced in the main README; it is not evidence of measured product savings or market demand.

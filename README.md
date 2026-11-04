@@ -22,11 +22,11 @@ Your assistants can build, write and research in parallel. You still carry the d
 
 ## Watch the demo
 
-https://github.com/user-attachments/assets/679017fc-f284-4617-9fe5-bbdb8fddfdd2
+[![Watch the updated Switchboard demo](assets/readme/demo-preview.png)](https://github.com/KanishkNoir/SwitchBoard/releases/tag/hackathon-final-2026-11-04)
 
-**2:59 · narrated product walkthrough.** [Original 1080p MP4](https://github.com/KanishkNoir/SwitchBoard/releases/download/hackathon-demo-2026-11-04/Switchboard-Hackathon-Workshop.mp4) · [Subtitles](https://github.com/KanishkNoir/SwitchBoard/releases/download/hackathon-demo-2026-11-04/Switchboard-Hackathon-Workshop.srt) · [Video verification](https://github.com/KanishkNoir/SwitchBoard/releases/download/hackathon-demo-2026-11-04/verification-workshop.json)
+**2:59 · updated narrated walkthrough.** [Watch / download the video](https://github.com/KanishkNoir/SwitchBoard/releases/tag/hackathon-final-2026-11-04) · [1080p MP4](https://github.com/KanishkNoir/SwitchBoard/releases/download/hackathon-final-2026-11-04/Switchboard-Hackathon-Policy-Benchmark.mp4) · [Subtitles](https://github.com/KanishkNoir/SwitchBoard/releases/download/hackathon-final-2026-11-04/Switchboard-Hackathon-Policy-Benchmark.srt) · [Video verification](https://github.com/KanishkNoir/SwitchBoard/releases/download/hackathon-final-2026-11-04/verification-policy-benchmark.json)
 
-The walkthrough uses the actual interface with clearly labelled example data. The historical ChatGPT–phone connection test is identified separately. It is not presented as a newly recorded native cross-agent correction run. [Demo and evidence notes](assets/readme/DEMO.md).
+See the current operator controls, correction impact, Focus, the synthetic benchmark tradeoff, and a verified Meta Muse Spark Open call through Baseten. The walkthrough uses the actual interface with labelled example data. Historical ChatGPT–phone proof is separate; the film does not claim a newly recorded native cross-agent correction run. [Demo and evidence notes](assets/readme/DEMO.md).
 
 ## Supported assistants
 
