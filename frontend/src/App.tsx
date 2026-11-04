@@ -87,6 +87,7 @@ export default function App() {
   const REQUIRED_CAPS = [
     "inbox", "steering", "debrief", "onboarding", "simulation",
     "steering_written_requests", "simulation_semantic_steering",
+    "rule_scope_contracts", "rule_correction_preview", "rule_hold_review",
   ];
 
   const runSimulation = async () => {

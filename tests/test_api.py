@@ -42,5 +42,6 @@ def test_health_advertises_capabilities():
     # the frontend renders from a backend route must be named here.
     h = client.get("/health").json()
     for cap in ["inbox", "steering", "debrief", "onboarding", "simulation",
-                "taste", "passport", "notices", "resolve"]:
+                "taste", "passport", "notices", "resolve", "rule_scope_contracts",
+                "rule_correction_preview", "rule_hold_review"]:
         assert cap in h["capabilities"], f"missing capability: {cap}"

@@ -1,12 +1,15 @@
 import type { DecisionPayload, GroundedObject, InboxItem, Passport, SteerResult } from "./types";
 
-async function post<T>(path: string, body?: unknown): Promise<T> {
+async function post<T>(path: string, body?: unknown, method = "POST"): Promise<T> {
   const r = await fetch(path, {
-    method: "POST",
+    method,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body ?? {}),
   });
-  if (!r.ok) throw new Error(`${path} → ${r.status}`);
+  if (!r.ok) {
+    const error = await r.json().catch(() => ({})) as { detail?: string; error?: string };
+    throw new Error(typeof error.detail === "string" ? error.detail : error.error ?? `${path} → ${r.status}`);
+  }
   return (await r.json()) as T;
 }
 
@@ -56,8 +59,15 @@ export const api = {
     post<{ agent_id: string; api_key: string }>("/api/agents/register", { name, kind }),
   rules: () => get<import("./types").RuleRow[]>("/human/rules"),
   createRule: (body: unknown) => post<{ rule_id: string; version_id: string }>("/rules", body),
+  scopeContract: (category: string) => get<import("./types").ScopeContract>(`/settings/${encodeURIComponent(category)}/scope-contract`),
+  saveScopeContract: (category: string, body: unknown) =>
+    post<import("./types").ScopeContract>(`/settings/${encodeURIComponent(category)}/scope-contract`, body, "PUT"),
+  previewRule: (ruleId: string, body: unknown) =>
+    post<import("./types").RuleUpdate>(`/rules/${ruleId}/preview`, body),
+  reviewRuleHold: (ruleId: string, versionId: string) =>
+    post<{ released: boolean }>(`/rules/${ruleId}/review-hold`, { expected_version_id: versionId, confirmed: true }),
   supersede: (ruleId: string, body: unknown) =>
-    post<{ version_id: string; blast_radius: { affected: import("./types").BlastItem[] } }>(
+    post<import("./types").RuleUpdate>(
       `/rules/${ruleId}/supersede`,
       body
     ),

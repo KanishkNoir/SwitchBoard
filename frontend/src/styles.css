@@ -33,6 +33,19 @@
     "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
 }
+
+.scope-editor select {
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  color: var(--ink);
+  background: var(--panel2);
+  font: inherit;
+}
+.scope-editor .bb { overflow-wrap: anywhere; }
+.rule-policy-form > label:has(input:not([type="checkbox"])) { display: grid; gap: 6px; }
+.rule-policy-form input:not([type="checkbox"]) { width: 100%; box-sizing: border-box; }
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #000000;

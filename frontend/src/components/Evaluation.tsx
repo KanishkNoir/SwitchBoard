@@ -123,9 +123,9 @@ export default function EvaluationPanel() {
               </div>
               <div className="note">
                 S2 (noisy first correction): the sliced hold defers the first wrong window, so
-                fewer wrong autos than immediate resume. S1 (misscoped correction): both leak
-                out of scope — a hold cannot fix a scope the system was never told. Recorded
-                honestly, not hidden.
+                fewer wrong autos than immediate resume. S1 (misscoped correction): immediate
+                resume can leak out of scope; the stronger widening hold delays automation.
+                That delay does not infer a boundary the system was never told.
               </div>
             </>
           )}

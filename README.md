@@ -95,6 +95,8 @@ Switchboard checks hard locks and mandatory scope before matching an existing ru
 
 New categories start in `shadow`. Stages are configured; the system does not silently promote itself. The evidence-based risk gate defaults to observation mode (`SWITCHBOARD_RISK_GATE_MODE=shadow`); `enforce` makes insufficient evidence a reason to defer. Hard locks and mandatory scope checks apply independently of that setting.
 
+Under **Agents & rules**, operators can require category boundaries such as project and workspace, repair existing incomplete rules, and preview corrections before applying them. Conflicting exact rules defer; strictly more specific exact rules can override broader defaults. Unchanged updates keep calibration, while wider scopes require stronger confirmation. [Policy behavior and operator controls](integrations/POLICY_LOGIC.md) explain the defaults, deliberate rule review and limits. Categories without configured boundary requirements retain legacy behavior.
+
 Payments, deletions, messages to new recipients, and actions classified as irreversible are locked for automatic answering. A model, a learned preference, or an Away-mode grant cannot remove those locks.
 
 When Switchboard defers, the agent leaves the question in its inbox and continues independent work. It must not guess, repeat the question directly to the user, or treat a queued request as permission.
@@ -218,7 +220,7 @@ The hosted MCP endpoint is `<public-origin>/mcp`. OAuth and operator routes have
 
 ## Evidence and limits
 
-The integration pass verified **179 backend tests**, the frontend production build, authenticated client calls, mobile OAuth flows, and seven OpenCode gate scenarios. These establish tested behavior, not universal compliance by every agent or a connection to every user's phone.
+The current policy pass verified **236 backend tests**, the frontend production build, subprocess MCP-over-HTTP, OpenCode gate checks, and synthetic browser flows at desktop and phone widths. Earlier integration checks cover authenticated client calls and mobile OAuth flows. These establish tested behavior, not universal compliance by every agent or a connection to every user's phone.
 
 The [versioned synthetic benchmark](benchmarks/README.md) tests **40 episodes and 220 questions per strategy** across five domains and eight conditions: reuse, scope, intent, corrections, downstream impact, hard locks, evidence integrity and deliberate failure cases. Every strategy receives the same simulated user answer when it requests review.
 
@@ -226,11 +228,11 @@ The [versioned synthetic benchmark](benchmarks/README.md) tests **40 episodes an
 |---|---:|---:|---:|
 | Always ask | 0 | 0 | 220 |
 | Apply corrections and immediately resume | 135 | 30 | 55 |
-| Switchboard with recalibration holds | 105 | 15 | 100 |
+| Switchboard with recalibration holds | 100 | 15 | 105 |
 
 In these fixtures, holds catch noisy corrections at the cost of more review. **All 15 remaining errors** come from incomplete authored scope or preference changes never communicated to Switchboard. A correct value returned across a required-review boundary counts as an error too.
 
-Correction-impact checks find **15/15 affected recorded work IDs with zero false alarms**; actually omitting dependency recording finds **0/15**. Unknown coverage earns no detection credit. [Results by condition and ablations](benchmarks/RESULTS.v1.md), [raw traces](benchmarks/results.v1.json), [frozen dataset](benchmarks/scenarios.v1.json) and [reproduction instructions](benchmarks/README.md#reproduce) are public.
+Correction-impact checks find **15/15 affected recorded work IDs with zero false alarms**; actually omitting dependency recording finds **0/15**. Unknown coverage earns no detection credit. [Current results by condition and ablations](benchmarks/RESULTS.policy-v2.md), [raw traces](benchmarks/results.policy-v2.json), [frozen dataset](benchmarks/scenarios.v1.json) and [reproduction instructions](benchmarks/README.md#reproduce) are public. The original [v1 report](benchmarks/RESULTS.v1.md) is preserved. The current policy asks five more times because task IDs no longer count as fresh contexts; the dataset does not exercise configured category contracts.
 
 These are correlated synthetic service tests with local matching and the risk gate in shadow mode. They do not measure native assistant compliance, real-user time savings or a production error rate. Adaptive policy proposals, automatic promotion and AI rewriting of active autonomy policies remain future work.
 
