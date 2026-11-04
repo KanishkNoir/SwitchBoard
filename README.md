@@ -105,11 +105,11 @@ The November 2026 integration pass tested actual MCP calls and authenticated ide
 | Muse Code | Authenticated calls from the saved user configuration | Ask-first instructions |
 | Claude Desktop | Authenticated calls from both Windows configuration locations | Ask-first instructions |
 | Hermes | Native Windows installation, native MCP discovery, authenticated calls | Ask-first instructions |
-| Claude / ChatGPT mobile | Hosted OAuth discovery, PKCE, MCP calls, refresh, and revocation | **Account/device linking remains pending** |
+| Claude / ChatGPT accounts and mobile review | Account connectors linked; live MCP calls and phone Focus round trip verified; native app checks confirmed by the user | Ask-first instructions |
 
 MCP gives an agent access to Switchboard. Enforcing every tool call requires a harness-specific gate. The installed Claude Code and OpenCode gates apply in this project; other clients must follow their instructions. Existing sessions need an MCP reload or restart after configuration changes.
 
-See the [client support report](integrations/CLIENT_SUPPORT.md), [Claude Code gate](integrations/CLAUDE_CODE_ACTION_GATE.md), [OpenCode gate](integrations/OPENCODE_ACTION_GATE.md), and [mobile connector setup](integrations/CLAUDE_MOBILE.md).
+See the [client support report](integrations/CLIENT_SUPPORT.md), [Claude Code gate](integrations/CLAUDE_CODE_ACTION_GATE.md), [OpenCode gate](integrations/OPENCODE_ACTION_GATE.md), and [mobile connectors and Focus mode](integrations/MOBILE.md).
 
 ## Run locally
 
@@ -160,7 +160,9 @@ powershell -ExecutionPolicy Bypass -File scripts/start-tunnel.ps1
 
 Treat that link like a password; it grants operator access and sets a 30-day cookie. A token-protected hosted hub also serves the interface directly.
 
-Connecting **Claude or ChatGPT's mobile app** is a separate account-level OAuth step. The server flow is tested; installation in the user's accounts and phones is still pending. See [mobile setup](integrations/CLAUDE_MOBILE.md).
+**Focus mode** presents one decision at a time with large answer buttons, context on demand, and a separate proposal lane. Tap **Start focus** when work is waiting. Eligible simple questions support swipes; locked requests and action reviews require deliberate taps. **Later** keeps the question in the inbox, and a steering swipe requests a revision.
+
+Claude and ChatGPT account connectors are linked and verified through live browser calls. A ChatGPT request was answered from Focus mode on a phone, and the agent retrieved and used that answer. The user also confirmed completing native Claude and ChatGPT phone-app checks. See [mobile setup and the verification flow](integrations/MOBILE.md).
 
 ### Deploy on Modal
 
@@ -176,7 +178,7 @@ The hosted MCP endpoint is `<public-origin>/mcp`. OAuth and operator routes have
 
 ## Evidence and limits
 
-The integration pass verified **173 backend tests**, the frontend production build, authenticated client calls, mobile OAuth flows, and seven OpenCode gate scenarios. These establish tested behavior, not universal compliance by every agent or a connection to every user's phone.
+The integration pass verified **179 backend tests**, the frontend production build, authenticated client calls, mobile OAuth flows, and seven OpenCode gate scenarios. These establish tested behavior, not universal compliance by every agent or a connection to every user's phone.
 
 The [replay evaluator](switchboard/evaluation.py) compares the same **synthetic** preference-change traces:
 

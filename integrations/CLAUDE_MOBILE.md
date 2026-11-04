@@ -1,5 +1,8 @@
 # Claude mobile connector
 
+For both Claude and ChatGPT and the phone review workflow, see
+[Mobile agents and Focus mode](MOBILE.md).
+
 Switchboard's Modal deployment can expose an authenticated Streamable HTTP MCP
 endpoint for Claude. Configure the connector once from Claude web; Claude's iOS
 and Android apps can then use connectors already added to the account.
@@ -22,7 +25,7 @@ Keep the current one-container limit while the hub uses the SQLite Volume.
 
 1. Register a dedicated agent named `claude-mobile` in Switchboard's Agents &
    rules page and securely copy its one-time `sb_…` key.
-2. In Claude web, open **Settings → Connectors → Add custom connector** and set
+2. In Claude web, open **Customize → Connectors → Add custom connector** and set
    the URL to `<SWITCHBOARD_MCP_PUBLIC_URL>/mcp`.
 3. When Claude opens Switchboard's consent page, enter the dedicated agent key.
    Switchboard validates it against the backend, then issues OAuth tokens tied
@@ -38,6 +41,7 @@ Keep the current one-container limit while the hub uses the SQLite Volume.
 To revoke access, disconnect the connector in Claude or disable the associated
 `claude-mobile` agent in Switchboard.
 
-Claude remote connectors are documented for paid plans, and servers must be
-added through Claude web before they can be used on mobile. See [Anthropic's
-remote MCP guide](https://support.anthropic.com/en/articles/11503834-building-custom-integrations-via-remote-mcp-servers).
+Use Claude's web connector setup, then verify availability in the native phone
+app for the account and app version in use. The current guide lists Free plans
+with one custom connector as well as paid plans. See [Claude's connector
+guide](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp).

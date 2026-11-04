@@ -24,7 +24,10 @@ INSTRUCTIONS = (
     "or scope question that a standing rule could answer, call ask with a stable request_id and "
     "accurate context. Reuse an answer only within its returned scope and cite its receipt. "
     "A defer means the question is queued: do not guess, bypass the queue, or execute the action. "
-    "Continue independent work. Record downstream receipt use with record_use. Report outcomes "
+    "Continue independent work. Poll get_action_request_status with the returned question_id "
+    "to retrieve the human's answer for any queued question, including preferences and permissions. "
+    "Keep the original request; do not submit a replacement question. "
+    "Record downstream receipt use with record_use. Report outcomes "
     "as agent assertions, never as human confirmation. Proposal steering requests a revision; "
     "it never authorizes an action. Use get_connection_status to verify identity and connectivity."
 )
@@ -188,10 +191,14 @@ def get_rules(category: str | None = None) -> list:
 
 @mcp.tool()
 def get_action_request_status(question_id: str) -> dict:
-    """Check whether the user answered this agent's queued action review."""
+    """Retrieve this agent's queued answer: action review, preference, or permission.
+
+    The historical tool name also covers questions answered in Focus mode.
+    Only questions owned by the authenticated agent can be read.
+    """
     if hub() is not None:
-        return hub().action_request_status(question_id)
-    return svc().action_request_status(_agent(), question_id)
+        return hub().question_answer_status(question_id)
+    return svc().action_request_status(_agent(), question_id, expected_intent=None)
 
 
 @mcp.tool()

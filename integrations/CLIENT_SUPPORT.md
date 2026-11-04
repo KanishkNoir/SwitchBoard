@@ -14,7 +14,7 @@ All clients use the same persistent ledger; each harness has its own identity.
 | Muse Code | Existing user settings merged; existing `muse-code-hub` identity | Actual stdio initialization and authenticated tool calls from those settings; provider/model preserved |
 | Claude Desktop | Both Roaming and Microsoft Store settings repaired | Actual stdio initialization and authenticated calls from both saved configurations |
 | Hermes | Official native Windows installation; `%LOCALAPPDATA%/hermes/config.yaml`; dedicated `hermes-hub` | Native `hermes mcp test switchboard` discovers nine tools; authenticated MCP identity/rules verified |
-| Claude / ChatGPT mobile | Hosted OAuth MCP endpoint; separate prepared mobile identities | Real DCR, PKCE authorization, authenticated MCP, refresh and revocation tested; account/device installation remains pending |
+| Claude / ChatGPT accounts and mobile review | Hosted OAuth MCP endpoint; `claude-mobile-mcp` and `chatgpt-mobile-mcp` | Account connectors linked; live browser MCP calls verified; phone Focus round trip recorded in the ledger; native phone-app checks confirmed by the user. |
 
 The stdio checks launch from an unrelated temporary working directory. Imports,
 credentials and ledger paths do not depend on the client's current directory.
@@ -62,11 +62,11 @@ checked by Switchboard and is not sent to the MCP client. OAuth access tokens
 last one hour; refresh tokens last 30 days and rotate. Disabling the associated
 agent invalidates access. Disconnect/revoke also revokes its token family.
 
-Browser automation was blocked by automatic approval review before opening
-`claude.ai`: browser access to that origin needs an explicit permission grant.
-The question covering `claude.ai` and `chatgpt.com` is queued in Switchboard's
-inbox as `ec5e2c5a-1627-431e-91b5-5417c56221cf`. No account or phone connection
-has been represented as completed.
+The user approved browser-origin access through Switchboard and connected both
+accounts. Separate OAuth refresh grants and live read-only tool calls confirm
+the `claude-mobile-mcp` and `chatgpt-mobile-mcp` identities. A request submitted
+by ChatGPT reached the inbox and was answered by the user in Focus mode on a
+phone. See [Mobile agents and Focus mode](MOBILE.md) for setup and verification.
 
 See the [Claude mobile setup](CLAUDE_MOBILE.md), [official OpenAI remote MCP
 guide](https://developers.openai.com/api/docs/guides/custom-mcp-server), and
@@ -98,6 +98,8 @@ streams can delay rolling replacement; `recreate` trades a brief cold start for
 a definite replacement. Keep the single-container limit until the ledger is
 moved to a database designed for multiple workers.
 
-Validation: 173 isolated backend tests pass, including real local MCP HTTP,
+Validation: 179 isolated backend tests pass, including real local MCP HTTP,
 credential-file handling, connection errors, OAuth routing/revocation and
-portable config generation. The frontend production build also passes.
+portable config generation. MCP answer polling also covers preference,
+permission, disambiguation and action-review requests while retaining ownership
+checks. The frontend production build also passes.
