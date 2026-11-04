@@ -81,6 +81,8 @@ def test_server_timing_and_cache_headers():
     assert r2.headers.get("X-Cache") == "HIT"  # only the lightweight generation check
     r3 = client.get("/inbox", headers={"If-None-Match": etag})
     assert r3.status_code == 304
+    assert r3.content == b""  # 304 must not send JSON null over a real HTTP connection.
+    assert "content-type" not in r3.headers
     # A write must invalidate: fresh data, never a stale HIT.
     reg = client.post("/api/agents/register", json={"name": "w", "kind": "cli"}).json()
     client.post("/api/ask", headers={"x-agent-key": reg["api_key"]},
